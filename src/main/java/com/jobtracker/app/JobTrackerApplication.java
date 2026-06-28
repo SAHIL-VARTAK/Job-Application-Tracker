@@ -1,11 +1,14 @@
 package com.jobtracker.app;
 
+import com.jobtracker.app.database.DatabaseInitializer;
 import com.jobtracker.app.model.ApplicationStatus;
 import com.jobtracker.app.service.JobApplicationService;
 import com.jobtracker.app.util.ConsoleHelper;
 
 public class JobTrackerApplication {
     public static void main(String[] args) {
+        DatabaseInitializer.initializeDatabase();
+
         JobApplicationService service = new JobApplicationService();
         boolean running = true;
 

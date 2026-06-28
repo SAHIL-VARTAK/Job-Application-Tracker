@@ -36,3 +36,6 @@ target/
 # Java compiled files
 *.class
 
+# SQLite database
+data/
+*.db
