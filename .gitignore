@@ -2,6 +2,8 @@
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
+.idea/
+*.iml
 
 ### Eclipse ###
 .apt_generated
@@ -27,3 +29,13 @@ bin/
 
 # Environment variables
 .env
+
+# Maven
+target/
+
+# Java compiled files
+*.class
+
+# SQLite database
+data/
+*.db
