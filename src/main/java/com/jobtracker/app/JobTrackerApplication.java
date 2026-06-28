@@ -20,6 +20,7 @@ public class JobTrackerApplication {
                     case 3 -> searchByCompany(service);
                     case 4 -> updateStatus(service);
                     case 5 -> deleteApplication(service);
+                    case 6 -> service.showStatistics();
                     case 0 -> running = false;
 
                     default -> System.out.println("Invalid option.");
@@ -41,6 +42,7 @@ public class JobTrackerApplication {
                 3. Search By Company
                 4. Update Status
                 5. Delete Application
+                6. View Statistics
                 
                 0. Exit
                 """);
@@ -121,6 +123,4 @@ public class JobTrackerApplication {
 
         System.out.println("Application deleted successfully.");
     }
-
-
 }

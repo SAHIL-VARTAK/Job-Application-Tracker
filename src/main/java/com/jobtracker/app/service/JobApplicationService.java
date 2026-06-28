@@ -7,6 +7,8 @@ import com.jobtracker.app.model.JobApplication;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class JobApplicationService {
     private final List<JobApplication> applications;
@@ -66,5 +68,25 @@ public class JobApplicationService {
     public void deleteApplication(int id) {
         JobApplication application = findById(id);
         applications.remove(application);
+    }
+
+    public void showStatistics() {
+        System.out.println("\n===== STATISTICS =====");
+        System.out.println("Total Applications: " + applications.size());
+
+        Map<ApplicationStatus, Long> statistics =
+                applications.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        JobApplication::getStatus,
+                                        Collectors.counting()
+                                )
+                        );
+
+        for (ApplicationStatus status : ApplicationStatus.values()) {
+            long count = statistics.getOrDefault(status, 0L);
+
+            System.out.println(status + ": " + count);
+        }
     }
 }
