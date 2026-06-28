@@ -3,7 +3,7 @@ package com.jobtracker.app.model;
 import java.time.LocalDate;
 
 public class JobApplication {
-    private final int id;
+    private Integer id;
     private final String company;
     private final String role;
     private ApplicationStatus status;
@@ -48,6 +48,10 @@ public class JobApplication {
 
     public String getNotes() {
         return notes;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
     }
 
     public void setStatus(ApplicationStatus status) {

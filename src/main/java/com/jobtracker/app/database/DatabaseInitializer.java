@@ -1,5 +1,8 @@
 package com.jobtracker.app.database;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -12,16 +15,7 @@ public final class DatabaseInitializer {
     }
 
     public static void initializeDatabase() {
-        String createTableQuery = """
-                CREATE TABLE IF NOT EXISTS job_applications (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    company TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    applied_date TEXT NOT NULL,
-                    notes TEXT
-                );
-                """;
+        String createTableQuery = loadSchema();
 
         try (
                 Connection connection = DatabaseManager.getConnection();
@@ -32,6 +26,32 @@ public final class DatabaseInitializer {
         catch (SQLException exception) {
             throw new RuntimeException(
                     "Failed to initialize database.",
+                    exception
+            );
+        }
+    }
+
+    private static String loadSchema() {
+        try (
+                InputStream inputStream =
+                        DatabaseInitializer.class
+                                .getClassLoader()
+                                .getResourceAsStream("schema.sql")
+        ) {
+            if (inputStream == null) {
+                throw new RuntimeException(
+                        "schema.sql not found in resources."
+                );
+            }
+
+            return new String(
+                    inputStream.readAllBytes(),
+                    StandardCharsets.UTF_8
+            );
+        }
+        catch (IOException exception) {
+            throw new RuntimeException(
+                    "Failed to load schema.sql.",
                     exception
             );
         }
