@@ -5,6 +5,8 @@ import com.jobtracker.app.model.ApplicationStatus;
 import com.jobtracker.app.service.JobApplicationService;
 import com.jobtracker.app.util.ConsoleHelper;
 
+import java.util.Map;
+
 public class JobTrackerApplication {
     public static void main(String[] args) {
         DatabaseInitializer.initializeDatabase();
@@ -23,7 +25,7 @@ public class JobTrackerApplication {
                     case 3 -> searchByCompany(service);
                     case 4 -> updateStatus(service);
                     case 5 -> deleteApplication(service);
-                    case 6 -> service.showStatistics();
+                    case 6 -> showStatistics(service);
                     case 0 -> running = false;
 
                     default -> System.out.println("Invalid option.");
@@ -89,24 +91,6 @@ public class JobTrackerApplication {
         applications.forEach(System.out::println);
     }
 
-    public static ApplicationStatus readStatus() {
-        System.out.println("\nAvailable Statuses:");
-
-        for (ApplicationStatus status : ApplicationStatus.values()) {
-            System.out.println(status.ordinal() + 1 + ". " + status);
-        }
-
-        while (true) {
-            int choice = ConsoleHelper.readInt("Choose status: ");
-
-            if (choice >= 1 && choice <= ApplicationStatus.values().length) {
-                return ApplicationStatus.values()[choice - 1];
-            }
-
-            System.out.println("Invalid status.");
-        }
-    }
-
     private static void updateStatus(
             JobApplicationService service
     ) {
@@ -125,5 +109,24 @@ public class JobTrackerApplication {
         service.deleteApplication(id);
 
         System.out.println("Application deleted successfully.");
+    }
+
+    private static void showStatistics(
+            JobApplicationService service
+    ) {
+        Map<ApplicationStatus, Long> statistics = service.getStatistics();
+        System.out.println("\n===== STATISTICS =====");
+
+        int total = statistics.values()
+                        .stream()
+                        .mapToInt(Long::intValue)
+                        .sum();
+
+        System.out.println("Total Applications: " + total);
+
+        for (ApplicationStatus status : ApplicationStatus.values()) {
+            long count = statistics.getOrDefault(status, 0L);
+            System.out.println(status + ": " + count);
+        }
     }
 }

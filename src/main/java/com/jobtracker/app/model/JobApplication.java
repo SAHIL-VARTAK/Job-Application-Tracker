@@ -11,7 +11,7 @@ public class JobApplication {
     private String notes;
 
     public JobApplication(
-            int id,
+            Integer id,
             String company,
             String role,
             ApplicationStatus status,
@@ -26,7 +26,7 @@ public class JobApplication {
         this.notes = notes;
     }
 
-    public int getId() {
+    public Integer getId() {
         return id;
     }
 

@@ -179,4 +179,35 @@ public class JobApplicationDAO {
             );
         }
     }
+
+    public List<JobApplication> searchByCompany(String company) {
+        String sql = """
+            SELECT *
+            FROM job_applications
+            WHERE LOWER(company) LIKE LOWER(?)
+            ORDER BY applied_date DESC
+            """;
+
+        List<JobApplication> applications = new ArrayList<>();
+
+        try (
+                Connection connection = DatabaseManager.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)
+        ) {
+            statement.setString(1, "%" + company + "%");
+            ResultSet resultSet = statement.executeQuery();
+
+            while (resultSet.next()) {
+                applications.add(mapRow(resultSet));
+            }
+
+            return applications;
+        }
+        catch (SQLException exception) {
+            throw new DatabaseException(
+                    "Failed to search applications.",
+                    exception
+            );
+        }
+    }
 }
