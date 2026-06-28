@@ -27,3 +27,10 @@ bin/
 
 # Environment variables
 .env
+
+# Maven
+target/
+
+# Java compiled files
+*.class
+

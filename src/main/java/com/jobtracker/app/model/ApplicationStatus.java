@@ -2,9 +2,9 @@ package com.jobtracker.app.model;
 
 public enum ApplicationStatus {
     APPLIED,
-    OA,
+    ONLINE_ASSESSMENT,
     INTERVIEW,
-    REJECTED,
     OFFER,
+    REJECTED,
     ACCEPTED
 }
