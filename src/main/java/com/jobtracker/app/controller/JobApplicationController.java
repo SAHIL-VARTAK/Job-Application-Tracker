@@ -7,6 +7,7 @@ import com.jobtracker.app.model.JobApplication;
 import com.jobtracker.app.service.JobApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -64,6 +65,7 @@ public class JobApplicationController {
     )
     @PostMapping
     public JobApplication createApplication(
+            @Valid
             @RequestBody CreateJobApplicationRequest request
     ) {
         return service.addApplication(
@@ -80,6 +82,7 @@ public class JobApplicationController {
     @PutMapping("/{id}/status")
     public void updateStatus(
             @PathVariable int id,
+            @Valid
             @RequestBody UpdateStatusRequest request
     ) {
         service.updateStatus(
