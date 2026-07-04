@@ -1,20 +1,24 @@
 package com.jobtracker.app.service;
 
-import com.jobtracker.app.database.JobApplicationDAO;
 import com.jobtracker.app.exception.ApplicationNotFoundException;
 import com.jobtracker.app.model.ApplicationStatus;
 import com.jobtracker.app.model.JobApplication;
+import com.jobtracker.app.repository.JobApplicationRepository;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Service
 public class JobApplicationService {
-    private final JobApplicationDAO jobApplicationDAO;
+    private final JobApplicationRepository repository;
 
-    public JobApplicationService() {
-        this.jobApplicationDAO = new JobApplicationDAO();
+    public JobApplicationService(
+            JobApplicationRepository repository
+    ) {
+        this.repository = repository;
     }
 
     public JobApplication addApplication(
@@ -32,39 +36,47 @@ public class JobApplicationService {
                         notes
                 );
 
-        return jobApplicationDAO.save(application);
+        return repository.save(application);
     }
 
     public List<JobApplication> getAllApplications() {
-        return jobApplicationDAO.findAll();
+        return repository.findAllByOrderByAppliedDateDesc();
     }
 
     public JobApplication findById(int id) {
-        return jobApplicationDAO.findById(id)
+        return repository.findById(id)
                 .orElseThrow(() ->
                         new ApplicationNotFoundException(id)
                 );
     }
 
-    public List<JobApplication> searchByCompany(String company) {
-        return jobApplicationDAO.searchByCompany(company);
+    public List<JobApplication> searchByCompany(
+            String company
+    ) {
+        return repository
+                .findByCompanyContainingIgnoreCase(company);
     }
 
     public void updateStatus(
             int id,
             ApplicationStatus status
     ) {
-        findById(id);
-        jobApplicationDAO.updateStatus(id, status);
+        JobApplication application = findById(id);
+
+        application.setStatus(status);
+
+        repository.save(application);
     }
 
     public void deleteApplication(int id) {
-        findById(id);
-        jobApplicationDAO.delete(id);
+        JobApplication application = findById(id);
+
+        repository.delete(application);
     }
 
     public Map<ApplicationStatus, Long> getStatistics() {
-        List<JobApplication> applications = getAllApplications();
+        List<JobApplication> applications =
+                getAllApplications();
 
         return applications.stream()
                 .collect(
