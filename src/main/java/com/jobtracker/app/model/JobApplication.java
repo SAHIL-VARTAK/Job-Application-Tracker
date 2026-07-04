@@ -1,14 +1,33 @@
 package com.jobtracker.app.model;
 
+import jakarta.persistence.*;
+
 import java.time.LocalDate;
 
+@Entity
+@Table(name = "job_applications")
 public class JobApplication {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
-    private final String company;
-    private final String role;
+
+    @Column(nullable = false)
+    private String company;
+
+    @Column(nullable = false)
+    private String role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private ApplicationStatus status;
-    private final LocalDate appliedDate;
+
+    @Column(name = "applied_date", nullable = false)
+    private LocalDate appliedDate;
+
     private String notes;
+
+    protected JobApplication() {
+    }
 
     public JobApplication(
             Integer id,
@@ -48,10 +67,6 @@ public class JobApplication {
 
     public String getNotes() {
         return notes;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
     }
 
     public void setStatus(ApplicationStatus status) {
