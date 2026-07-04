@@ -1,14 +1,62 @@
 package com.jobtracker.app.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.persistence.*;
+
 import java.time.LocalDate;
 
+@Entity
+@Schema(
+    description = "Represents a job application and its recruitment progress"
+)
+@Table(name = "job_applications")
 public class JobApplication {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Schema(
+        description = "Unique application identifier",
+        example = "1",
+        accessMode = Schema.AccessMode.READ_ONLY
+    )
     private Integer id;
-    private final String company;
-    private final String role;
+
+    @Schema(
+        description = "Company name",
+        example = "Google"
+    )
+    @Column(nullable = false)
+    private String company;
+
+    @Schema(
+        description = "Role applied for",
+        example = "Software Engineer"
+    )
+    @Column(nullable = false)
+    private String role;
+
+    @Enumerated(EnumType.STRING)
+    @Schema(
+        description = "Current application status",
+        example = "APPLIED"
+    )
+    @Column(nullable = false)
     private ApplicationStatus status;
-    private final LocalDate appliedDate;
+
+    @Schema(
+        description = "Date when the application was submitted",
+        example = "2026-07-04"
+    )
+    @Column(name = "applied_date", nullable = false)
+    private LocalDate appliedDate;
+
+    @Schema(
+        description = "Additional notes about the application",
+        example = "Applied via LinkedIn referral"
+    )
     private String notes;
+
+    protected JobApplication() {
+    }
 
     public JobApplication(
             Integer id,
@@ -48,10 +96,6 @@ public class JobApplication {
 
     public String getNotes() {
         return notes;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
     }
 
     public void setStatus(ApplicationStatus status) {
