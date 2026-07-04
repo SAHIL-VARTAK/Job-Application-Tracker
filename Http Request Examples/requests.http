@@ -1,0 +1,44 @@
+### Create
+POST http://localhost:8080/api/applications
+Content-Type: application/json
+
+{
+  "company": "Google",
+  "role": "Software Engineer",
+  "notes": "Applied via referral"
+}
+
+###
+
+### Get All
+GET http://localhost:8080/api/applications
+
+###
+
+### Get By ID
+GET http://localhost:8080/api/applications/1
+
+###
+
+### Search
+GET http://localhost:8080/api/applications/search?company=Google
+
+###
+
+### Update Status
+PUT http://localhost:8080/api/applications/1/status
+Content-Type: application/json
+
+{
+  "status": "INTERVIEW"
+}
+
+###
+
+### Delete
+DELETE http://localhost:8080/api/applications/1
+
+###
+
+### Statistics
+GET http://localhost:8080/api/applications/statistics
