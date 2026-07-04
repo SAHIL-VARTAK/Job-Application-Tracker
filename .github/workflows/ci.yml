@@ -5,11 +5,15 @@ on:
     branches:
       - main
       - develop
+      - task/improvements
 
   pull_request:
     branches:
       - main
       - develop
+      - task/improvements
+
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v4
 
