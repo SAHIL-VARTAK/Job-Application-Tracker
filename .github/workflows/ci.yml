@@ -31,8 +31,17 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Check code formatting
+        run: mvn spotless:check
+
       - name: Run tests and build
         run: mvn clean verify
+
+      - name: Upload Application JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-jar
+          path: target/*.jar
 
       - name: Upload JaCoCo Report
         uses: actions/upload-artifact@v4

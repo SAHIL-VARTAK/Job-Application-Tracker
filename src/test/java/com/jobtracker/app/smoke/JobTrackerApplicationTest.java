@@ -6,12 +6,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
 class JobTrackerApplicationTests {
-    @Test
-    void contextLoads() {
-    }
+  @Test
+  void contextLoads() {}
 
-    @Test
-    void mainMethodRuns() {
-        JobTrackerApplication.main(new String[]{});
-    }
+  @Test
+  void mainMethodRuns() {
+    JobTrackerApplication.main(new String[] {});
+  }
 }
