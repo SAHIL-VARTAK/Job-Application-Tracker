@@ -1,70 +1,95 @@
 package com.jobtracker.app.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.persistence.*;
 import java.time.LocalDate;
 
+@Entity
+@Schema(description = "Represents a job application and its recruitment progress")
+@Table(name = "job_applications")
 public class JobApplication {
-    private Integer id;
-    private final String company;
-    private final String role;
-    private ApplicationStatus status;
-    private final LocalDate appliedDate;
-    private String notes;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Schema(
+      description = "Unique application identifier",
+      example = "1",
+      accessMode = Schema.AccessMode.READ_ONLY)
+  private Integer id;
 
-    public JobApplication(
-            Integer id,
-            String company,
-            String role,
-            ApplicationStatus status,
-            LocalDate appliedDate,
-            String notes
-    ) {
-        this.id = id;
-        this.company = company;
-        this.role = role;
-        this.status = status;
-        this.appliedDate = appliedDate;
-        this.notes = notes;
-    }
+  @Schema(description = "Company name", example = "Google")
+  @Column(nullable = false)
+  private String company;
 
-    public Integer getId() {
-        return id;
-    }
+  @Schema(description = "Role applied for", example = "Software Engineer")
+  @Column(nullable = false)
+  private String role;
 
-    public String getCompany() {
-        return company;
-    }
+  @Enumerated(EnumType.STRING)
+  @Schema(description = "Current application status", example = "APPLIED")
+  @Column(nullable = false)
+  private ApplicationStatus status;
 
-    public String getRole() {
-        return role;
-    }
+  @Schema(description = "Date when the application was submitted", example = "2026-07-04")
+  @Column(name = "applied_date", nullable = false)
+  private LocalDate appliedDate;
 
-    public ApplicationStatus getStatus() {
-        return status;
-    }
+  @Schema(
+      description = "Additional notes about the application",
+      example = "Applied via LinkedIn referral")
+  private String notes;
 
-    public LocalDate getAppliedDate() {
-        return appliedDate;
-    }
+  protected JobApplication() {}
 
-    public String getNotes() {
-        return notes;
-    }
+  public JobApplication(
+      Integer id,
+      String company,
+      String role,
+      ApplicationStatus status,
+      LocalDate appliedDate,
+      String notes) {
+    this.id = id;
+    this.company = company;
+    this.role = role;
+    this.status = status;
+    this.appliedDate = appliedDate;
+    this.notes = notes;
+  }
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
+  public Integer getId() {
+    return id;
+  }
 
-    public void setStatus(ApplicationStatus status) {
-        this.status = status;
-    }
+  public String getCompany() {
+    return company;
+  }
 
-    public void setNotes(String notes) {
-        this.notes = notes;
-    }
+  public String getRole() {
+    return role;
+  }
 
-    @Override
-    public String toString() {
-        return """
+  public ApplicationStatus getStatus() {
+    return status;
+  }
+
+  public LocalDate getAppliedDate() {
+    return appliedDate;
+  }
+
+  public String getNotes() {
+    return notes;
+  }
+
+  public void setStatus(ApplicationStatus status) {
+    this.status = status;
+  }
+
+  public void setNotes(String notes) {
+    this.notes = notes;
+  }
+
+  @Override
+  public String toString() {
+    return """
                 --------------------------------
                 ID: %d
                 Company: %s
@@ -73,13 +98,7 @@ public class JobApplication {
                 Applied Date: %s
                 Notes: %s
                 --------------------------------
-                """.formatted(
-                id,
-                company,
-                role,
-                status,
-                appliedDate,
-                notes
-        );
-    }
+                """
+        .formatted(id, company, role, status, appliedDate, notes);
+  }
 }
