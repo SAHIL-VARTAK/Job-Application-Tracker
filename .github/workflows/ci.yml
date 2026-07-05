@@ -54,12 +54,18 @@ jobs:
       - name: Prepare GitHub Pages content
         if: github.ref == 'refs/heads/main'
         run: |
-          mkdir -p public/coverage
-          cp -r target/site/jacoco/* public/coverage/
+          mkdir public
+          cp -r target/site/jacoco/* public/
+
+      - name: Verify Pages content
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "=== PUBLIC DIRECTORY ==="
+          ls -R public
 
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: public
 
@@ -69,6 +75,7 @@ jobs:
     needs: build
 
     permissions:
+      contents: read
       pages: write
       id-token: write
 
