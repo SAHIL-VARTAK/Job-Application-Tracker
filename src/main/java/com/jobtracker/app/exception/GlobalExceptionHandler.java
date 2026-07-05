@@ -8,66 +8,39 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-    @ExceptionHandler(ApplicationNotFoundException.class)
-    public ProblemDetail handleApplicationNotFound(
-            ApplicationNotFoundException exception
-    ) {
-        ProblemDetail problemDetail =
-                ProblemDetail.forStatusAndDetail(
-                        HttpStatus.NOT_FOUND,
-                        exception.getMessage()
-                );
+  @ExceptionHandler(ApplicationNotFoundException.class)
+  public ProblemDetail handleApplicationNotFound(ApplicationNotFoundException exception) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
 
-        problemDetail.setTitle(
-                "Application Not Found"
-        );
+    problemDetail.setTitle("Application Not Found");
 
-        return problemDetail;
-    }
+    return problemDetail;
+  }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidationException(
-            MethodArgumentNotValidException exception
-    ) {
-        String message =
-                exception.getBindingResult()
-                        .getFieldErrors()
-                        .stream()
-                        .map(error ->
-                                error.getField()
-                                        + ": "
-                                        + error.getDefaultMessage()
-                        )
-                        .findFirst()
-                        .orElse("Validation failed.");
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ProblemDetail handleValidationException(MethodArgumentNotValidException exception) {
+    String message =
+        exception.getBindingResult().getFieldErrors().stream()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .findFirst()
+            .orElse("Validation failed.");
 
-        ProblemDetail problemDetail =
-                ProblemDetail.forStatusAndDetail(
-                        HttpStatus.BAD_REQUEST,
-                        message
-                );
+    ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, message);
 
-        problemDetail.setTitle(
-                "Validation Error"
-        );
+    problemDetail.setTitle("Validation Error");
 
-        return problemDetail;
-    }
+    return problemDetail;
+  }
 
-    @ExceptionHandler(Exception.class)
-    public ProblemDetail handleGenericException(
-            Exception exception
-    ) {
-        ProblemDetail problemDetail =
-                ProblemDetail.forStatusAndDetail(
-                        HttpStatus.INTERNAL_SERVER_ERROR,
-                        "An unexpected error occurred."
-                );
+  @ExceptionHandler(Exception.class)
+  public ProblemDetail handleGenericException(Exception exception) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
 
-        problemDetail.setTitle(
-                "Internal Server Error"
-        );
+    problemDetail.setTitle("Internal Server Error");
 
-        return problemDetail;
-    }
+    return problemDetail;
+  }
 }

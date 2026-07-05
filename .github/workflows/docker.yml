@@ -1,0 +1,42 @@
+name: Docker Build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - task/improvements
+
+  pull_request:
+    branches:
+      - main
+      - develop
+      - task/improvements
+
+  workflow_dispatch:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t job-tracker .
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name job-tracker-app \
+            -p 8080:8080 \
+            job-tracker
+
+      - name: Wait for application startup
+        run: sleep 20
+
+      - name: Check Swagger endpoint
+        run: |
+          curl --fail http://localhost:8080/swagger-ui/index.html
