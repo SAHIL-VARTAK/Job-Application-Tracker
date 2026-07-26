@@ -9,23 +9,24 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig {
 
-    private final String frontendUrl;
+  private final String frontendUrl;
 
-    public CorsConfig(@Value("${app.frontend.url}") String frontendUrl) {
-        this.frontendUrl = frontendUrl;
-    }
+  public CorsConfig(@Value("${app.frontend.url}") String frontendUrl) {
+    this.frontendUrl = frontendUrl;
+  }
 
-    @Bean
-    public WebMvcConfigurer corsConfigurer() {
-        return new WebMvcConfigurer() {
+  @Bean
+  public WebMvcConfigurer corsConfigurer() {
+    return new WebMvcConfigurer() {
 
-            @Override
-            public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/api/**")
-                        .allowedOrigins(frontendUrl)
-                        .allowedMethods("GET", "POST", "PUT", "DELETE")
-                        .allowedHeaders("*");
-            }
-        };
-    }
+      @Override
+      public void addCorsMappings(CorsRegistry registry) {
+        registry
+            .addMapping("/api/**")
+            .allowedOrigins(frontendUrl)
+            .allowedMethods("GET", "POST", "PUT", "DELETE")
+            .allowedHeaders("*");
+      }
+    };
+  }
 }
