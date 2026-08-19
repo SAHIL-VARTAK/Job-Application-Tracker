@@ -12,10 +12,11 @@ permissions:
 
 jobs:
   native-build:
-    name: Build and Run Native Windows Application
+    name: Build and Test Native Windows Application
     runs-on: windows-latest
 
     steps:
+
       # ------------------------------------------------------------
       # Checkout
       # ------------------------------------------------------------
@@ -230,3 +231,259 @@ jobs:
                   Write-Host "Native application stopped."
               }
           }
+
+      # ------------------------------------------------------------
+      # Install UPX
+      # ------------------------------------------------------------
+      - name: Install UPX
+        shell: pwsh
+        run: |
+          Write-Host "Installing UPX..."
+
+          choco install upx -y --no-progress
+
+          Write-Host ""
+          Write-Host "===== UPX VERSION ====="
+          upx --version
+
+      # ------------------------------------------------------------
+      # Create distribution directory
+      # ------------------------------------------------------------
+      - name: Prepare distribution
+        shell: pwsh
+        run: |
+          $distribution = "target\distribution"
+          $appDirectory = "$distribution\job-application-tracker"
+
+          # Remove previous distribution if present
+          if (Test-Path $distribution) {
+              Remove-Item `
+                -Path $distribution `
+                -Recurse `
+                -Force
+          }
+
+          # Create directories
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $appDirectory | Out-Null
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "$appDirectory\data" | Out-Null
+
+          Write-Host "Created:"
+          Write-Host "  $appDirectory"
+          Write-Host "  $appDirectory\data"
+
+      # ------------------------------------------------------------
+      # Copy native executable
+      # ------------------------------------------------------------
+      - name: Copy native executable
+        shell: pwsh
+        run: |
+          $source = "target\job-application-tracker.exe"
+          $destination = "target\distribution\job-application-tracker\job-application-tracker.exe"
+
+          if (-not (Test-Path $source)) {
+              Write-Error "Native executable not found: $source"
+              exit 1
+          }
+
+          Copy-Item `
+            -Path $source `
+            -Destination $destination `
+            -Force
+
+          Write-Host "Copied native executable."
+
+      # ------------------------------------------------------------
+      # Copy required native DLLs
+      # ------------------------------------------------------------
+      - name: Copy native DLLs
+        shell: pwsh
+        run: |
+          $source = "target"
+          $destination = "target\distribution\job-application-tracker"
+
+          $dlls = @(
+              "awt.dll",
+              "fontmanager.dll",
+              "freetype.dll",
+              "java.dll",
+              "javaaccessbridge.dll",
+              "javajpeg.dll",
+              "jawt.dll",
+              "jvm.dll",
+              "lcms.dll"
+          )
+
+          foreach ($dll in $dlls) {
+
+              $sourceFile = Join-Path $source $dll
+
+              if (Test-Path $sourceFile) {
+
+                  Copy-Item `
+                    -Path $sourceFile `
+                    -Destination $destination `
+                    -Force
+
+                  Write-Host "Copied $dll"
+
+              }
+              else {
+
+                  Write-Host "WARNING: $dll was not generated."
+
+              }
+          }
+
+      # ------------------------------------------------------------
+      # Compress native executable with UPX
+      # ------------------------------------------------------------
+      - name: Compress native executable
+        shell: pwsh
+        run: |
+          $exe = "target\distribution\job-application-tracker\job-application-tracker.exe"
+
+          if (-not (Test-Path $exe)) {
+              Write-Error "Distribution executable not found: $exe"
+              exit 1
+          }
+
+          $before = (Get-Item $exe).Length
+
+          Write-Host ""
+          Write-Host "============================================================"
+          Write-Host "UPX COMPRESSION"
+          Write-Host "============================================================"
+          Write-Host ""
+
+          Write-Host "Before compression:"
+          Write-Host "$before bytes"
+          Write-Host "$([math]::Round($before / 1MB, 2)) MB"
+
+          upx `
+            --best `
+            --lzma `
+            $exe
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "UPX compression failed."
+              exit 1
+          }
+
+          $after = (Get-Item $exe).Length
+
+          $beforeMB = [math]::Round($before / 1MB, 2)
+          $afterMB = [math]::Round($after / 1MB, 2)
+          $savedMB = [math]::Round(($before - $after) / 1MB, 2)
+          $savedPercent = [math]::Round((1 - ($after / $before)) * 100, 2)
+
+          Write-Host ""
+          Write-Host "After compression:"
+          Write-Host "$after bytes"
+          Write-Host "$afterMB MB"
+
+          Write-Host ""
+          Write-Host "Space saved:"
+          Write-Host "$savedMB MB"
+          Write-Host "Reduction: $savedPercent%"
+
+          Write-Host ""
+          Write-Host "===== VERIFY UPX ====="
+
+          upx -t $exe
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "UPX verification failed."
+              exit 1
+          }
+
+          Write-Host ""
+          Write-Host "UPX verification PASSED."
+
+      # ------------------------------------------------------------
+      # Display final distribution
+      # ------------------------------------------------------------
+      - name: Show distribution contents
+        shell: pwsh
+        run: |
+          $distribution = "target\distribution\job-application-tracker"
+
+          Write-Host ""
+          Write-Host "============================================================"
+          Write-Host "FINAL DISTRIBUTION"
+          Write-Host "============================================================"
+          Write-Host ""
+
+          Get-ChildItem `
+            -Path $distribution `
+            -Recurse `
+            -File |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
+
+          $totalSize = (
+              Get-ChildItem `
+                -Path $distribution `
+                -Recurse `
+                -File |
+                Measure-Object -Property Length -Sum
+          ).Sum
+
+          Write-Host ""
+          Write-Host "Total distribution size:"
+          Write-Host "$([math]::Round($totalSize / 1MB, 2)) MB"
+
+      # ------------------------------------------------------------
+      # Create ZIP package
+      # ------------------------------------------------------------
+      - name: Create distribution ZIP
+        shell: pwsh
+        run: |
+          $source = "target\distribution\job-application-tracker"
+          $zip = "target\job-application-tracker-windows-native.zip"
+
+          if (Test-Path $zip) {
+              Remove-Item `
+                -Path $zip `
+                -Force
+          }
+
+          Compress-Archive `
+            -Path $source `
+            -DestinationPath $zip `
+            -CompressionLevel Optimal
+
+          if (-not (Test-Path $zip)) {
+              Write-Error "ZIP package was not created."
+              exit 1
+          }
+
+          $zipSize = (Get-Item $zip).Length
+
+          Write-Host ""
+          Write-Host "============================================================"
+          Write-Host "PACKAGE CREATED"
+          Write-Host "============================================================"
+          Write-Host ""
+          Write-Host "Package:"
+          Write-Host $zip
+          Write-Host ""
+          Write-Host "Size:"
+          Write-Host "$([math]::Round($zipSize / 1MB, 2)) MB"
+
+      # ------------------------------------------------------------
+      # Upload ZIP artifact
+      # ------------------------------------------------------------
+      - name: Upload native Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-application-tracker-windows-native
+          path: target/job-application-tracker-windows-native.zip
+          if-no-files-found: error
+          retention-days: 3
