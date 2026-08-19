@@ -1,0 +1,101 @@
+name: Native Windows Build
+
+on:
+  push:
+    branches:
+      - feature/graal-vm-optimization
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM JDK 22
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '22'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify GraalVM
+        shell: pwsh
+        run: |
+          java -version
+          native-image --version
+
+      - name: Build native executable
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
+
+          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
+
+      - name: Create database directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "target\data"
+
+      - name: Run native application
+        shell: pwsh
+        run: |
+          $process = Start-Process `
+            -FilePath ".\target\job-application-tracker.exe" `
+            -ArgumentList '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
+            -RedirectStandardOutput "target\native-app.log" `
+            -RedirectStandardError "target\native-app-error.log" `
+            -PassThru
+
+          $started = $false
+
+          try {
+              for ($i = 0; $i -lt 60; $i++) {
+                  Start-Sleep -Seconds 1
+
+                  if ($process.HasExited) {
+                      Write-Host "Application exited with code $($process.ExitCode)"
+                      break
+                  }
+
+                  try {
+                      $response = Invoke-WebRequest `
+                          -Uri "http://localhost:8080/api/applications" `
+                          -UseBasicParsing `
+                          -TimeoutSec 2
+
+                      if ($response.StatusCode -lt 500) {
+                          $started = $true
+                          break
+                      }
+                  }
+                  catch {
+                      # Application is still starting
+                  }
+              }
+
+              if (-not $started) {
+                  Write-Host "Native application failed to start."
+
+                  Write-Host "===== STDOUT ====="
+                  Get-Content "target\native-app.log" -ErrorAction SilentlyContinue
+
+                  Write-Host "===== STDERR ====="
+                  Get-Content "target\native-app-error.log" -ErrorAction SilentlyContinue
+
+                  exit 1
+              }
+
+              Write-Host "Native application started successfully."
+              Write-Host "API responded successfully."
+          }
+          finally {
+              if (-not $process.HasExited) {
+                  Stop-Process -Id $process.Id -Force
+              }
+          }
