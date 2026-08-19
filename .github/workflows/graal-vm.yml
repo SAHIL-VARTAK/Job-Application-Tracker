@@ -186,15 +186,6 @@ jobs:
               }
           }
 
-      - name: Install UPX
-        shell: pwsh
-        run: |
-          choco install upx -y --no-progress
-
-          Write-Host ""
-          Write-Host "===== UPX VERSION ====="
-          upx --version
-
       - name: Prepare distribution
         shell: pwsh
         run: |
@@ -271,66 +262,6 @@ jobs:
                   Write-Host "WARNING: $dll was not generated."
               }
           }
-
-      - name: Compress native executable
-        shell: pwsh
-        run: |
-          $exe = "target\distribution\job-application-tracker\job-application-tracker.exe"
-
-          if (-not (Test-Path $exe)) {
-              Write-Error "Distribution executable not found: $exe"
-              exit 1
-          }
-
-          $before = (Get-Item $exe).Length
-
-          Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "UPX COMPRESSION"
-          Write-Host "============================================================"
-          Write-Host ""
-
-          Write-Host "Before compression:"
-          Write-Host "$([math]::Round($before / 1MB, 2)) MB"
-
-          upx --best --lzma $exe
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "UPX compression failed."
-              exit 1
-          }
-
-          $after = (Get-Item $exe).Length
-
-          $beforeMB = [math]::Round($before / 1MB, 2)
-          $afterMB = [math]::Round($after / 1MB, 2)
-          $savedMB = [math]::Round(($before - $after) / 1MB, 2)
-          $savedPercent = [math]::Round((1 - ($after / $before)) * 100, 2)
-
-          Write-Host ""
-          Write-Host "After compression:"
-          Write-Host "$afterMB MB"
-
-          Write-Host ""
-          Write-Host "Space saved:"
-          Write-Host "$savedMB MB"
-
-          Write-Host ""
-          Write-Host "Reduction:"
-          Write-Host "$savedPercent%"
-
-          Write-Host ""
-          Write-Host "===== VERIFY UPX ====="
-
-          upx -t $exe
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "UPX verification failed."
-              exit 1
-          }
-
-          Write-Host ""
-          Write-Host "UPX verification PASSED."
 
       - name: Show distribution contents
         shell: pwsh
