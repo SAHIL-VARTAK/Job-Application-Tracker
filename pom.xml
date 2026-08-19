@@ -192,8 +192,6 @@
                             <buildArgs>
     <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
     <buildArg>-O2</buildArg>
-    <buildArg>-g0</buildArg>
-    <buildArg>--strip-debug</buildArg>
     <buildArg>-H:IncludeLocales=en</buildArg>
     <buildArg>--gc=serial</buildArg>
     <buildArg>-march=compatibility</buildArg>
