@@ -3,7 +3,8 @@ name: Native Windows Build
 on:
   push:
     branches:
-      - feature/graal-vm-optimization
+      - native
+
   workflow_dispatch:
 
 permissions:
@@ -11,94 +12,221 @@ permissions:
 
 jobs:
   native-build:
+    name: Build and Run Native Windows Application
     runs-on: windows-latest
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # GraalVM JDK 22
+      # ------------------------------------------------------------
       - name: Set up GraalVM JDK 22
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '22'
-          distribution: 'graalvm'
+          java-version: "22"
+          distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ------------------------------------------------------------
+      # Verify Java / GraalVM
+      # ------------------------------------------------------------
       - name: Verify GraalVM
         shell: pwsh
         run: |
+          Write-Host "===== JAVA ====="
           java -version
+
+          Write-Host ""
+          Write-Host "===== NATIVE IMAGE ====="
           native-image --version
 
+      # ------------------------------------------------------------
+      # Build native executable
+      # ------------------------------------------------------------
       - name: Build native executable
         shell: cmd
         run: |
+          echo Setting up Visual Studio C++ environment...
+
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
 
+          echo.
+          echo ===== MSVC =====
+          cl
+
+          echo.
+          echo ===== MAVEN NATIVE BUILD =====
           call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
 
+      # ------------------------------------------------------------
+      # Create database directory
+      # ------------------------------------------------------------
       - name: Create database directory
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "target\data"
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "target\data"
 
-              
+          Write-Host "Created target\data"
+
+      # ------------------------------------------------------------
+      # Run native application and test API
+      # ------------------------------------------------------------
       - name: Run native application
-  shell: pwsh
-  run: |
-    $process = Start-Process `
-      -FilePath ".\target\job-application-tracker.exe" `
-      -ArgumentList '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
-      -RedirectStandardOutput "native-output.log" `
-      -RedirectStandardError "native-error.log" `
-      -PassThru
+        shell: pwsh
+        run: |
+          $exe = ".\target\job-application-tracker.exe"
 
-    $started = $false
+          if (-not (Test-Path $exe)) {
+              Write-Error "Native executable was not found: $exe"
+              exit 1
+          }
 
-    try {
-        for ($i = 0; $i -lt 60; $i++) {
-            Start-Sleep -Seconds 1
+          Write-Host ""
+          Write-Host "============================================================"
+          Write-Host "Starting Job Application Tracker Native Application"
+          Write-Host "============================================================"
+          Write-Host ""
 
-            if ($process.HasExited) {
-                break
-            }
+          $process = Start-Process `
+            -FilePath $exe `
+            -ArgumentList `
+              '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
+            -RedirectStandardOutput "native-output.log" `
+            -RedirectStandardError "native-error.log" `
+            -PassThru
 
-            try {
-                $response = Invoke-WebRequest `
-                    -Uri "http://localhost:8080/api/applications" `
-                    -UseBasicParsing `
-                    -TimeoutSec 2
+          $started = $false
 
-                if ($response.StatusCode -lt 500) {
-                    $started = $true
-                    break
-                }
-            }
-            catch {
-                # Still starting
-            }
-        }
+          try {
 
-        Write-Host ""
-        Write-Host "================ SPRING BOOT OUTPUT ================"
-        Get-Content "native-output.log" -ErrorAction SilentlyContinue
+              Write-Host "Process ID: $($process.Id)"
+              Write-Host "Waiting for Spring Boot to start..."
 
-        Write-Host ""
-        Write-Host "================ STDERR ================"
-        Get-Content "native-error.log" -ErrorAction SilentlyContinue
+              # ----------------------------------------------------
+              # Wait for application
+              # ----------------------------------------------------
+              for ($i = 0; $i -lt 60; $i++) {
 
-        Write-Host ""
-        Write-Host "====================================================="
+                  Start-Sleep -Seconds 1
 
-        if (-not $started) {
-            Write-Error "Native application failed to start."
-            exit 1
-        }
+                  if ($process.HasExited) {
+                      Write-Host ""
+                      Write-Host "Application exited unexpectedly."
+                      Write-Host "Exit code: $($process.ExitCode)"
+                      break
+                  }
 
-        Write-Host "Native application started successfully."
-    }
-    finally {
-        if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-        }
-    }
+                  try {
+
+                      $response = Invoke-WebRequest `
+                        -Uri "http://localhost:8080/api/applications" `
+                        -UseBasicParsing `
+                        -TimeoutSec 2
+
+                      if ($response.StatusCode -lt 500) {
+                          $started = $true
+                          break
+                      }
+
+                  }
+                  catch {
+                      # Application is still starting.
+                  }
+              }
+
+              # ----------------------------------------------------
+              # Print Spring Boot logs
+              # ----------------------------------------------------
+              Write-Host ""
+              Write-Host "============================================================"
+              Write-Host "SPRING BOOT STARTUP OUTPUT"
+              Write-Host "============================================================"
+              Write-Host ""
+
+              if (Test-Path "native-output.log") {
+                  Get-Content "native-output.log"
+              }
+
+              Write-Host ""
+              Write-Host "============================================================"
+              Write-Host "APPLICATION STDERR"
+              Write-Host "============================================================"
+              Write-Host ""
+
+              if (Test-Path "native-error.log") {
+                  Get-Content "native-error.log"
+              }
+
+              Write-Host ""
+              Write-Host "============================================================"
+
+              # ----------------------------------------------------
+              # Check startup result
+              # ----------------------------------------------------
+              if (-not $started) {
+
+                  Write-Host ""
+                  Write-Error "Native application failed to start or API did not respond."
+
+                  if ($process.HasExited) {
+                      Write-Host "Process exit code: $($process.ExitCode)"
+                  }
+
+                  exit 1
+              }
+
+              Write-Host ""
+              Write-Host "Native application started successfully."
+              Write-Host "API responded successfully."
+              Write-Host ""
+
+              # ----------------------------------------------------
+              # Verify database was created
+              # ----------------------------------------------------
+              $database = "target\data\job_tracker.db"
+
+              if (Test-Path $database) {
+
+                  $size = (Get-Item $database).Length
+
+                  Write-Host "SQLite database created successfully."
+                  Write-Host "Database: $database"
+                  Write-Host "Size: $size bytes"
+
+              }
+              else {
+
+                  Write-Error "SQLite database was not created."
+                  exit 1
+              }
+
+              Write-Host ""
+              Write-Host "Native application test PASSED."
+
+          }
+          finally {
+
+              # ----------------------------------------------------
+              # Stop application
+              # ----------------------------------------------------
+              if (-not $process.HasExited) {
+
+                  Write-Host ""
+                  Write-Host "Stopping native application..."
+
+                  Stop-Process `
+                    -Id $process.Id `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+
+                  Write-Host "Native application stopped."
+              }
+          }
