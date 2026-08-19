@@ -16,26 +16,16 @@ jobs:
     runs-on: windows-latest
 
     steps:
-
-      # ------------------------------------------------------------
-      # Checkout
-      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------
-      # GraalVM JDK 22
-      # ------------------------------------------------------------
-      - name: Set up GraalVM JDK 22
+      - name: Set up GraalVM JDK 25
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: "22"
+          version: "25.0"
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ------------------------------------------------------------
-      # Verify Java / GraalVM
-      # ------------------------------------------------------------
       - name: Verify GraalVM
         shell: pwsh
         run: |
@@ -46,9 +36,6 @@ jobs:
           Write-Host "===== NATIVE IMAGE ====="
           native-image --version
 
-      # ------------------------------------------------------------
-      # Build native executable
-      # ------------------------------------------------------------
       - name: Build native executable
         shell: cmd
         run: |
@@ -64,22 +51,16 @@ jobs:
           echo ===== MAVEN NATIVE BUILD =====
           call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
 
-      # ------------------------------------------------------------
-      # Create database directory
-      # ------------------------------------------------------------
       - name: Create database directory
         shell: pwsh
         run: |
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path "target\data"
+            -Path "target\data" | Out-Null
 
           Write-Host "Created target\data"
 
-      # ------------------------------------------------------------
-      # Run native application and test API
-      # ------------------------------------------------------------
       - name: Run native application
         shell: pwsh
         run: |
@@ -107,15 +88,10 @@ jobs:
           $started = $false
 
           try {
-
               Write-Host "Process ID: $($process.Id)"
               Write-Host "Waiting for Spring Boot to start..."
 
-              # ----------------------------------------------------
-              # Wait for application
-              # ----------------------------------------------------
               for ($i = 0; $i -lt 60; $i++) {
-
                   Start-Sleep -Seconds 1
 
                   if ($process.HasExited) {
@@ -126,7 +102,6 @@ jobs:
                   }
 
                   try {
-
                       $response = Invoke-WebRequest `
                         -Uri "http://localhost:8080/api/applications" `
                         -UseBasicParsing `
@@ -136,16 +111,11 @@ jobs:
                           $started = $true
                           break
                       }
-
                   }
                   catch {
-                      # Application is still starting.
                   }
               }
 
-              # ----------------------------------------------------
-              # Print Spring Boot logs
-              # ----------------------------------------------------
               Write-Host ""
               Write-Host "============================================================"
               Write-Host "SPRING BOOT STARTUP OUTPUT"
@@ -169,11 +139,7 @@ jobs:
               Write-Host ""
               Write-Host "============================================================"
 
-              # ----------------------------------------------------
-              # Check startup result
-              # ----------------------------------------------------
               if (-not $started) {
-
                   Write-Host ""
                   Write-Error "Native application failed to start or API did not respond."
 
@@ -189,37 +155,25 @@ jobs:
               Write-Host "API responded successfully."
               Write-Host ""
 
-              # ----------------------------------------------------
-              # Verify database was created
-              # ----------------------------------------------------
               $database = "target\data\job_tracker.db"
 
               if (Test-Path $database) {
-
                   $size = (Get-Item $database).Length
 
                   Write-Host "SQLite database created successfully."
                   Write-Host "Database: $database"
                   Write-Host "Size: $size bytes"
-
               }
               else {
-
                   Write-Error "SQLite database was not created."
                   exit 1
               }
 
               Write-Host ""
               Write-Host "Native application test PASSED."
-
           }
           finally {
-
-              # ----------------------------------------------------
-              # Stop application
-              # ----------------------------------------------------
               if (-not $process.HasExited) {
-
                   Write-Host ""
                   Write-Host "Stopping native application..."
 
@@ -232,30 +186,21 @@ jobs:
               }
           }
 
-      # ------------------------------------------------------------
-      # Install UPX
-      # ------------------------------------------------------------
       - name: Install UPX
         shell: pwsh
         run: |
-          Write-Host "Installing UPX..."
-
           choco install upx -y --no-progress
 
           Write-Host ""
           Write-Host "===== UPX VERSION ====="
           upx --version
 
-      # ------------------------------------------------------------
-      # Create distribution directory
-      # ------------------------------------------------------------
       - name: Prepare distribution
         shell: pwsh
         run: |
           $distribution = "target\distribution"
           $appDirectory = "$distribution\job-application-tracker"
 
-          # Remove previous distribution if present
           if (Test-Path $distribution) {
               Remove-Item `
                 -Path $distribution `
@@ -263,7 +208,6 @@ jobs:
                 -Force
           }
 
-          # Create directories
           New-Item `
             -ItemType Directory `
             -Force `
@@ -274,13 +218,8 @@ jobs:
             -Force `
             -Path "$appDirectory\data" | Out-Null
 
-          Write-Host "Created:"
-          Write-Host "  $appDirectory"
-          Write-Host "  $appDirectory\data"
+          Write-Host "Distribution directory prepared."
 
-      # ------------------------------------------------------------
-      # Copy native executable
-      # ------------------------------------------------------------
       - name: Copy native executable
         shell: pwsh
         run: |
@@ -299,9 +238,6 @@ jobs:
 
           Write-Host "Copied native executable."
 
-      # ------------------------------------------------------------
-      # Copy required native DLLs
-      # ------------------------------------------------------------
       - name: Copy native DLLs
         shell: pwsh
         run: |
@@ -321,29 +257,21 @@ jobs:
           )
 
           foreach ($dll in $dlls) {
-
               $sourceFile = Join-Path $source $dll
 
               if (Test-Path $sourceFile) {
-
                   Copy-Item `
                     -Path $sourceFile `
                     -Destination $destination `
                     -Force
 
                   Write-Host "Copied $dll"
-
               }
               else {
-
                   Write-Host "WARNING: $dll was not generated."
-
               }
           }
 
-      # ------------------------------------------------------------
-      # Compress native executable with UPX
-      # ------------------------------------------------------------
       - name: Compress native executable
         shell: pwsh
         run: |
@@ -363,13 +291,9 @@ jobs:
           Write-Host ""
 
           Write-Host "Before compression:"
-          Write-Host "$before bytes"
           Write-Host "$([math]::Round($before / 1MB, 2)) MB"
 
-          upx `
-            --best `
-            --lzma `
-            $exe
+          upx --best --lzma $exe
 
           if ($LASTEXITCODE -ne 0) {
               Write-Error "UPX compression failed."
@@ -385,13 +309,15 @@ jobs:
 
           Write-Host ""
           Write-Host "After compression:"
-          Write-Host "$after bytes"
           Write-Host "$afterMB MB"
 
           Write-Host ""
           Write-Host "Space saved:"
           Write-Host "$savedMB MB"
-          Write-Host "Reduction: $savedPercent%"
+
+          Write-Host ""
+          Write-Host "Reduction:"
+          Write-Host "$savedPercent%"
 
           Write-Host ""
           Write-Host "===== VERIFY UPX ====="
@@ -406,9 +332,6 @@ jobs:
           Write-Host ""
           Write-Host "UPX verification PASSED."
 
-      # ------------------------------------------------------------
-      # Display final distribution
-      # ------------------------------------------------------------
       - name: Show distribution contents
         shell: pwsh
         run: |
@@ -439,9 +362,6 @@ jobs:
           Write-Host "Total distribution size:"
           Write-Host "$([math]::Round($totalSize / 1MB, 2)) MB"
 
-      # ------------------------------------------------------------
-      # Create ZIP package
-      # ------------------------------------------------------------
       - name: Create distribution ZIP
         shell: pwsh
         run: |
@@ -477,13 +397,10 @@ jobs:
           Write-Host "Size:"
           Write-Host "$([math]::Round($zipSize / 1MB, 2)) MB"
 
-      # ------------------------------------------------------------
-      # Upload ZIP artifact
-      # ------------------------------------------------------------
       - name: Upload native Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: job-application-tracker-windows-native
+          name: job-application-tracker-windows-native-graalvm-25
           path: target/job-application-tracker-windows-native.zip
           if-no-files-found: error
           retention-days: 3

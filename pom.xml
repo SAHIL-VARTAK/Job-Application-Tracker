@@ -161,6 +161,10 @@
         <profile>
             <id>native</id>
 
+            <properties>
+                <java.version>25</java.version>
+            </properties>
+
             <dependencies>
                 <!-- Replace Tomcat with Jetty only for native builds -->
                 <dependency>
@@ -190,14 +194,15 @@
                             <imageName>job-application-tracker</imageName>
 
                             <buildArgs>
-    <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-    <buildArg>-O1</buildArg>
-    <buildArg>-H:IncludeLocales=en</buildArg>
-    <buildArg>--gc=serial</buildArg>
-    <buildArg>-march=compatibility</buildArg>
-    <buildArg>-H:+BuildReport</buildArg>
-    <buildArg>--no-fallback</buildArg>
-</buildArgs>
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>-O1</buildArg>
+                                <buildArg>-H:IncludeLocales=en</buildArg>
+                                <buildArg>-H:-AddAllCharsets</buildArg>
+                                <buildArg>--gc=serial</buildArg>
+                                <buildArg>-march=compatibility</buildArg>
+                                <buildArg>-H:+BuildReport</buildArg>
+                                <buildArg>--no-fallback</buildArg>
+                            </buildArgs>
                         </configuration>
 
                         <executions>
