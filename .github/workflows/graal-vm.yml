@@ -3,7 +3,7 @@ name: Native Windows Build
 on:
   push:
     branches:
-      - native
+      - feature/graal-vm-optimization
 
   workflow_dispatch:
 
