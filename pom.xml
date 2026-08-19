@@ -191,7 +191,7 @@
 
                             <buildArgs>
     <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-    <buildArg>-O3</buildArg>
+    <buildArg>-O1</buildArg>
     <buildArg>-H:IncludeLocales=en</buildArg>
     <buildArg>--gc=serial</buildArg>
     <buildArg>-march=compatibility</buildArg>
