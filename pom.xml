@@ -190,12 +190,16 @@
                             <imageName>job-application-tracker</imageName>
 
                             <buildArgs>
-                                <buildArg>-O1</buildArg>
-                                <buildArg>-march=compatibility</buildArg>
-                                <buildArg>-H:+BuildReport</buildArg>
-                                <buildArg>--no-fallback</buildArg>
-                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-                            </buildArgs>
+    <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+    <buildArg>-O2</buildArg>
+    <buildArg>-g0</buildArg>
+    <buildArg>--strip-debug</buildArg>
+    <buildArg>-H:IncludeLocales=en</buildArg>
+    <buildArg>--gc=serial</buildArg>
+    <buildArg>-march=compatibility</buildArg>
+    <buildArg>-H:+BuildReport</buildArg>
+    <buildArg>--no-fallback</buildArg>
+</buildArgs>
                         </configuration>
 
                         <executions>
