@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 env:
-  NATIVE_JDK_VERSION: "21"
+  NATIVE_JDK_VERSION: "17"
+  GRAALVM_VERSION: "21.3.3.1"
   APP_NAME: "job-application-tracker"
 
 jobs:
@@ -23,12 +24,53 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM JDK 21
-        uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: "21"
-          distribution: "graalvm"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # GraalVM 21.3.3.1 is based on JDK 17
+      - name: Set up GraalVM 21.3.3.1
+        shell: pwsh
+        run: |
+          $graalVmUrl = "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-21.3.3.1/graalvm-ce-java17-windows-amd64-21.3.3.1.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "graalvm.zip"
+          $installDir = Join-Path $env:RUNNER_TEMP "graalvm"
+
+          Write-Host "===== DOWNLOADING GRAALVM ====="
+          Write-Host "Version: $env:GRAALVM_VERSION"
+          Write-Host "URL: $graalVmUrl"
+
+          Invoke-WebRequest `
+            -Uri $graalVmUrl `
+            -OutFile $zip
+
+          Write-Host ""
+          Write-Host "===== EXTRACTING GRAALVM ====="
+
+          Expand-Archive `
+            -Path $zip `
+            -DestinationPath $installDir `
+            -Force
+
+          $graalHome = Get-ChildItem `
+            -Path $installDir `
+            -Directory |
+            Select-Object -First 1
+
+          if ($null -eq $graalHome) {
+              Write-Error "GraalVM installation directory was not found."
+              exit 1
+          }
+
+          "JAVA_HOME=$($graalHome.FullName)" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
+          "$($graalHome.FullName)\bin" | Out-File `
+            -FilePath $env:GITHUB_PATH `
+            -Encoding utf8 `
+            -Append
+
+          Write-Host ""
+          Write-Host "GraalVM installed at:"
+          Write-Host $graalHome.FullName
 
       - name: Verify GraalVM
         shell: pwsh
@@ -49,11 +91,15 @@ jobs:
         run: |
           echo Setting up Visual Studio C++ environment...
 
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%Microsoft Visual StudioInstaller\u000Bswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VCAuxiliaryBuild\u000Bcvars64.bat`) do call "%%i"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VCAuxiliaryBuild\vcvars64.bat`) do call "%%i"
 
           echo.
           echo ===== MSVC =====
           cl
+
+          echo.
+          echo ===== JAVA VERSION =====
+          java -version
 
           echo.
           echo ===== MAVEN JAVA VERSION =====
@@ -132,7 +178,7 @@ jobs:
         shell: pwsh
         run: |
           $source = $env:NATIVE_EXE
-          $target = Join-Path $PWD "target$env:APP_NAME.exe"
+          $target = Join-Path $PWD "target\$env:APP_NAME.exe"
 
           if (-not (Test-Path -LiteralPath $source)) {
               Write-Error "Native executable was not found: $source"
@@ -160,9 +206,9 @@ jobs:
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path (Join-Path $PWD "targetdata") | Out-Null
+            -Path (Join-Path $PWD "target\data") | Out-Null
 
-          Write-Host "Created targetdata"
+          Write-Host "Created target\data"
 
       - name: Compress native executable
         shell: pwsh
@@ -202,7 +248,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = $env:NATIVE_EXE
-          $dataDirectory = Join-Path $PWD "targetdata"
+          $dataDirectory = Join-Path $PWD "target\data"
           $outputLog = Join-Path $PWD "native-output.log"
           $errorLog = Join-Path $PWD "native-error.log"
 
@@ -318,7 +364,7 @@ jobs:
       - name: Prepare distribution
         shell: pwsh
         run: |
-          $distribution = Join-Path $PWD "targetdistribution"
+          $distribution = Join-Path $PWD "target\distribution"
           $appDirectory = Join-Path $distribution $env:APP_NAME
           $dataDirectory = Join-Path $appDirectory "data"
 
@@ -343,7 +389,7 @@ jobs:
           $source = $env:NATIVE_EXE
           $destination = Join-Path `
             $PWD `
-            "targetdistribution$env:APP_NAME$env:APP_NAME.exe"
+            "target\distribution\$env:APP_NAME\$env:APP_NAME.exe"
 
           if (-not (Test-Path -LiteralPath $source)) {
               Write-Error "Native executable was not found: $source"
@@ -364,7 +410,7 @@ jobs:
           $source = Join-Path $PWD "target"
           $destination = Join-Path `
             $PWD `
-            "targetdistribution$env:APP_NAME"
+            "target\distribution\$env:APP_NAME"
 
           $dlls = @(
               "awt.dll",
@@ -399,7 +445,7 @@ jobs:
         run: |
           $distribution = Join-Path `
             $PWD `
-            "targetdistribution$env:APP_NAME"
+            "target\distribution\$env:APP_NAME"
 
           Write-Host "===== FINAL DISTRIBUTION ====="
 
@@ -427,11 +473,11 @@ jobs:
         run: |
           $source = Join-Path `
             $PWD `
-            "targetdistribution$env:APP_NAME"
+            "target\distribution\$env:APP_NAME"
 
           $zip = Join-Path `
             $PWD `
-            "target$env:APP_NAME-windows-native.zip"
+            "target\$env:APP_NAME-windows-native.zip"
 
           if (Test-Path -LiteralPath $zip) {
               Remove-Item `
@@ -458,7 +504,7 @@ jobs:
       - name: Upload native Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: job-application-tracker-windows-native-graalvm-21-upx
+          name: job-application-tracker-windows-native-graalvm-21.3.3.1-upx
           path: target/job-application-tracker-windows-native.zip
           if-no-files-found: error
           retention-days: 3
