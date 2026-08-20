@@ -12,6 +12,7 @@ permissions:
 
 env:
   NATIVE_JDK_VERSION: "21"
+  APP_NAME: "job-application-tracker"
 
 jobs:
   native-build:
@@ -64,20 +65,62 @@ jobs:
 
           if errorlevel 1 exit /b %errorlevel%
 
-      - name: Create database directory
+      - name: Locate generated executable
         shell: pwsh
         run: |
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path "targetdata" | Out-Null
+          $target = Join-Path $PWD "target"
 
-          Write-Host "Created targetdata"
+          Write-Host "Target directory: $target"
+
+          if (-not (Test-Path -LiteralPath $target)) {
+              Write-Error "Target directory was not found: $target"
+              exit 1
+          }
+
+          $executables = @(
+              Get-ChildItem `
+                -Path $target `
+                -Filter "*.exe" `
+                -File `
+                -ErrorAction SilentlyContinue
+          )
+
+          if ($executables.Count -eq 0) {
+              Write-Host "Files generated in target:"
+              Get-ChildItem `
+                -Path $target `
+                -Recurse `
+                -File |
+                Select-Object FullName, Length |
+                Format-Table -AutoSize
+
+              Write-Error "No executable was generated in $target"
+              exit 1
+          }
+
+          $preferred = $executables |
+            Where-Object { $_.BaseName -eq $env:APP_NAME } |
+            Select-Object -First 1
+
+          if ($null -eq $preferred) {
+              $preferred = $executables |
+                Sort-Object Length -Descending |
+                Select-Object -First 1
+          }
+
+          $preferredFullPath = $preferred.FullName
+
+          "NATIVE_EXE=$preferredFullPath" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
+          Write-Host "Selected executable:"
+          Write-Host $preferredFullPath
 
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v3
         with:
-          version: latest
           install-only: true
 
       - name: Verify UPX
@@ -85,20 +128,57 @@ jobs:
         run: |
           upx --version
 
+      - name: Rename native executable
+        shell: pwsh
+        run: |
+          $source = $env:NATIVE_EXE
+          $target = Join-Path $PWD "target$env:APP_NAME.exe"
+
+          if (-not (Test-Path -LiteralPath $source)) {
+              Write-Error "Native executable was not found: $source"
+              exit 1
+          }
+
+          if ($source -ne $target) {
+              Copy-Item `
+                -LiteralPath $source `
+                -Destination $target `
+                -Force
+          }
+
+          "NATIVE_EXE=$target" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
+          Write-Host "Executable used by later steps:"
+          Write-Host $target
+
+      - name: Create database directory
+        shell: pwsh
+        run: |
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path (Join-Path $PWD "targetdata") | Out-Null
+
+          Write-Host "Created targetdata"
+
       - name: Compress native executable
         shell: pwsh
         run: |
-          $exe = ".\targetjob-application-tracker.exe"
+          $exe = $env:NATIVE_EXE
 
-          if (-not (Test-Path $exe)) {
+          if (-not (Test-Path -LiteralPath $exe)) {
               Write-Error "Native executable was not found: $exe"
               exit 1
           }
 
-          $originalSize = (Get-Item $exe).Length
+          $originalSize = (Get-Item -LiteralPath $exe).Length
 
-          Write-Host "Original executable size:"
-          Write-Host "$([math]::Round($originalSize / 1MB, 2)) MB"
+          Write-Host "Original executable:"
+          Write-Host $exe
+          Write-Host "Original size: $([math]::Round($originalSize / 1MB, 2)) MB"
 
           upx --best --lzma $exe
 
@@ -114,27 +194,40 @@ jobs:
               exit 1
           }
 
-          $compressedSize = (Get-Item $exe).Length
+          $compressedSize = (Get-Item -LiteralPath $exe).Length
 
-          Write-Host "Compressed executable size:"
-          Write-Host "$([math]::Round($compressedSize / 1MB, 2)) MB"
+          Write-Host "Compressed size: $([math]::Round($compressedSize / 1MB, 2)) MB"
 
       - name: Run compressed native application
         shell: pwsh
         run: |
-          $exe = ".\targetjob-application-tracker.exe"
+          $exe = $env:NATIVE_EXE
+          $dataDirectory = Join-Path $PWD "targetdata"
+          $outputLog = Join-Path $PWD "native-output.log"
+          $errorLog = Join-Path $PWD "native-error.log"
 
-          if (-not (Test-Path $exe)) {
+          if (-not (Test-Path -LiteralPath $exe)) {
               Write-Error "Native executable was not found: $exe"
               exit 1
           }
 
+          if (Test-Path -LiteralPath $outputLog) {
+              Remove-Item -LiteralPath $outputLog -Force
+          }
+
+          if (Test-Path -LiteralPath $errorLog) {
+              Remove-Item -LiteralPath $errorLog -Force
+          }
+
+          $databasePath = Join-Path $dataDirectory "job_tracker.db"
+          $databaseUrl = "jdbc:sqlite:$databasePath"
+
           $process = Start-Process `
             -FilePath $exe `
-            -ArgumentList `
-              '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
-            -RedirectStandardOutput "native-output.log" `
-            -RedirectStandardError "native-error.log" `
+            -ArgumentList "--spring.datasource.url=$databaseUrl" `
+            -RedirectStandardOutput $outputLog `
+            -RedirectStandardError $errorLog `
+            -WorkingDirectory $PWD `
             -PassThru
 
           $started = $false
@@ -147,7 +240,6 @@ jobs:
                   Start-Sleep -Seconds 1
 
                   if ($process.HasExited) {
-                      Write-Host ""
                       Write-Host "Application exited unexpectedly."
                       Write-Host "Exit code: $($process.ExitCode)"
                       break
@@ -171,15 +263,15 @@ jobs:
               Write-Host ""
               Write-Host "===== SPRING BOOT STARTUP OUTPUT ====="
 
-              if (Test-Path "native-output.log") {
-                  Get-Content "native-output.log"
+              if (Test-Path -LiteralPath $outputLog) {
+                  Get-Content -LiteralPath $outputLog
               }
 
               Write-Host ""
               Write-Host "===== APPLICATION STDERR ====="
 
-              if (Test-Path "native-error.log") {
-                  Get-Content "native-error.log"
+              if (Test-Path -LiteralPath $errorLog) {
+                  Get-Content -LiteralPath $errorLog
               }
 
               if (-not $started) {
@@ -196,12 +288,11 @@ jobs:
               Write-Host "Compressed native application started successfully."
               Write-Host "API responded successfully."
 
-              $database = "targetdatajob_tracker.db"
+              $database = Join-Path $dataDirectory "job_tracker.db"
 
-              if (Test-Path $database) {
-                  $size = (Get-Item $database).Length
+              if (Test-Path -LiteralPath $database) {
+                  $size = (Get-Item -LiteralPath $database).Length
 
-                  Write-Host ""
                   Write-Host "SQLite database created successfully."
                   Write-Host "Database: $database"
                   Write-Host "Size: $size bytes"
@@ -211,32 +302,29 @@ jobs:
                   exit 1
               }
 
-              Write-Host ""
               Write-Host "Compressed native application test PASSED."
           }
           finally {
               if (-not $process.HasExited) {
-                  Write-Host ""
                   Write-Host "Stopping native application..."
 
                   Stop-Process `
                     -Id $process.Id `
                     -Force `
                     -ErrorAction SilentlyContinue
-
-                  Write-Host "Native application stopped."
               }
           }
 
       - name: Prepare distribution
         shell: pwsh
         run: |
-          $distribution = "targetdistribution"
-          $appDirectory = "$distributionjob-application-tracker"
+          $distribution = Join-Path $PWD "targetdistribution"
+          $appDirectory = Join-Path $distribution $env:APP_NAME
+          $dataDirectory = Join-Path $appDirectory "data"
 
-          if (Test-Path $distribution) {
+          if (Test-Path -LiteralPath $distribution) {
               Remove-Item `
-                -Path $distribution `
+                -LiteralPath $distribution `
                 -Recurse `
                 -Force
           }
@@ -244,38 +332,39 @@ jobs:
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path $appDirectory | Out-Null
+            -Path $dataDirectory | Out-Null
 
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path "$appDirectorydata" | Out-Null
-
-          Write-Host "Distribution directory prepared."
+          Write-Host "Distribution directory prepared:"
+          Write-Host $appDirectory
 
       - name: Copy compressed native executable
         shell: pwsh
         run: |
-          $source = "targetjob-application-tracker.exe"
-          $destination = "targetdistributionjob-application-trackerjob-application-tracker.exe"
+          $source = $env:NATIVE_EXE
+          $destination = Join-Path `
+            $PWD `
+            "targetdistribution$env:APP_NAME$env:APP_NAME.exe"
 
-          if (-not (Test-Path $source)) {
-              Write-Error "Native executable not found: $source"
+          if (-not (Test-Path -LiteralPath $source)) {
+              Write-Error "Native executable was not found: $source"
               exit 1
           }
 
           Copy-Item `
-            -Path $source `
+            -LiteralPath $source `
             -Destination $destination `
             -Force
 
-          Write-Host "Copied compressed native executable."
+          Write-Host "Copied compressed executable:"
+          Write-Host $destination
 
       - name: Copy native DLLs
         shell: pwsh
         run: |
-          $source = "target"
-          $destination = "targetdistributionjob-application-tracker"
+          $source = Join-Path $PWD "target"
+          $destination = Join-Path `
+            $PWD `
+            "targetdistribution$env:APP_NAME"
 
           $dlls = @(
               "awt.dll",
@@ -292,9 +381,9 @@ jobs:
           foreach ($dll in $dlls) {
               $sourceFile = Join-Path $source $dll
 
-              if (Test-Path $sourceFile) {
+              if (Test-Path -LiteralPath $sourceFile) {
                   Copy-Item `
-                    -Path $sourceFile `
+                    -LiteralPath $sourceFile `
                     -Destination $destination `
                     -Force
 
@@ -308,9 +397,10 @@ jobs:
       - name: Show distribution contents
         shell: pwsh
         run: |
-          $distribution = "targetdistributionjob-application-tracker"
+          $distribution = Join-Path `
+            $PWD `
+            "targetdistribution$env:APP_NAME"
 
-          Write-Host ""
           Write-Host "===== FINAL DISTRIBUTION ====="
 
           Get-ChildItem `
@@ -335,12 +425,17 @@ jobs:
       - name: Create distribution ZIP
         shell: pwsh
         run: |
-          $source = "targetdistributionjob-application-tracker"
-          $zip = "targetjob-application-tracker-windows-native.zip"
+          $source = Join-Path `
+            $PWD `
+            "targetdistribution$env:APP_NAME"
 
-          if (Test-Path $zip) {
+          $zip = Join-Path `
+            $PWD `
+            "target$env:APP_NAME-windows-native.zip"
+
+          if (Test-Path -LiteralPath $zip) {
               Remove-Item `
-                -Path $zip `
+                -LiteralPath $zip `
                 -Force
           }
 
@@ -349,14 +444,13 @@ jobs:
             -DestinationPath $zip `
             -CompressionLevel Optimal
 
-          if (-not (Test-Path $zip)) {
+          if (-not (Test-Path -LiteralPath $zip)) {
               Write-Error "ZIP package was not created."
               exit 1
           }
 
-          $zipSize = (Get-Item $zip).Length
+          $zipSize = (Get-Item -LiteralPath $zip).Length
 
-          Write-Host ""
           Write-Host "===== PACKAGE CREATED ====="
           Write-Host "Package: $zip"
           Write-Host "Size: $([math]::Round($zipSize / 1MB, 2)) MB"
