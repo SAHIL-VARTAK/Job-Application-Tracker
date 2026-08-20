@@ -24,7 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # GraalVM 21.3.3.1 is based on JDK 17
       - name: Set up GraalVM 21.3.3.1
         shell: pwsh
         run: |
@@ -39,6 +38,11 @@ jobs:
           Invoke-WebRequest `
             -Uri $graalVmUrl `
             -OutFile $zip
+
+          if (-not (Test-Path -LiteralPath $zip)) {
+              Write-Error "GraalVM ZIP was not downloaded."
+              exit 1
+          }
 
           Write-Host ""
           Write-Host "===== EXTRACTING GRAALVM ====="
@@ -72,6 +76,42 @@ jobs:
           Write-Host "GraalVM installed at:"
           Write-Host $graalHome.FullName
 
+      - name: Install Native Image
+        shell: pwsh
+        run: |
+          Write-Host "===== INSTALLING NATIVE IMAGE ====="
+
+          $gu = Join-Path $env:JAVA_HOME "bin\gu.cmd"
+
+          if (-not (Test-Path -LiteralPath $gu)) {
+              Write-Error "GraalVM gu.cmd was not found: $gu"
+              exit 1
+          }
+
+          & $gu install native-image
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to install Native Image."
+              exit 1
+          }
+
+          "$env:JAVA_HOME\bin" | Out-File `
+            -FilePath $env:GITHUB_PATH `
+            -Encoding utf8 `
+            -Append
+
+          Write-Host ""
+          Write-Host "===== NATIVE IMAGE INSTALLED ====="
+
+          $nativeImage = Join-Path $env:JAVA_HOME "bin\native-image.cmd"
+
+          if (-not (Test-Path -LiteralPath $nativeImage)) {
+              Write-Error "native-image.cmd was not found after installation."
+              exit 1
+          }
+
+          & $nativeImage --version
+
       - name: Verify GraalVM
         shell: pwsh
         run: |
@@ -83,8 +123,16 @@ jobs:
           Write-Host $env:JAVA_HOME
 
           Write-Host ""
+          Write-Host "===== GRAALVM ====="
+          & "$env:JAVA_HOME\bin\java.exe" -version
+
+          Write-Host ""
           Write-Host "===== NATIVE IMAGE ====="
           native-image --version
+
+          Write-Host ""
+          Write-Host "===== NATIVE IMAGE LOCATION ====="
+          Get-Command native-image
 
       - name: Build native executable
         shell: cmd
@@ -100,6 +148,10 @@ jobs:
           echo.
           echo ===== JAVA VERSION =====
           java -version
+
+          echo.
+          echo ===== JAVA HOME =====
+          echo %JAVA_HOME%
 
           echo.
           echo ===== MAVEN JAVA VERSION =====
