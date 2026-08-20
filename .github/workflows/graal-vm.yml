@@ -5,6 +5,11 @@ on:
     branches:
       - feature/graal-vm-optimization
 
+  pull_request:
+    branches:
+      - main
+      - develop
+
   workflow_dispatch:
 
 permissions:
@@ -16,15 +21,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ------------------------------------------------------------
-      # Checkout
-      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------
-      # GraalVM JDK 22
-      # ------------------------------------------------------------
       - name: Set up GraalVM JDK 22
         uses: graalvm/setup-graalvm@v1
         with:
@@ -32,22 +31,12 @@ jobs:
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ------------------------------------------------------------
-      # Verify Java / GraalVM
-      # ------------------------------------------------------------
       - name: Verify GraalVM
         shell: pwsh
         run: |
-          Write-Host "===== JAVA ====="
           java -version
-
-          Write-Host ""
-          Write-Host "===== NATIVE IMAGE ====="
           native-image --version
 
-      # ------------------------------------------------------------
-      # Build native executable
-      # ------------------------------------------------------------
       - name: Build native executable
         shell: cmd
         run: |
@@ -63,9 +52,6 @@ jobs:
           echo ===== MAVEN NATIVE BUILD =====
           call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
 
-      # ------------------------------------------------------------
-      # Create database directory
-      # ------------------------------------------------------------
       - name: Create database directory
         shell: pwsh
         run: |
@@ -74,11 +60,6 @@ jobs:
             -Force `
             -Path "target\data"
 
-          Write-Host "Created target\data"
-
-      # ------------------------------------------------------------
-      # Run native application and test API
-      # ------------------------------------------------------------
       - name: Run native application
         shell: pwsh
         run: |
@@ -88,12 +69,6 @@ jobs:
               Write-Error "Native executable was not found: $exe"
               exit 1
           }
-
-          Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "Starting Job Application Tracker Native Application"
-          Write-Host "============================================================"
-          Write-Host ""
 
           $process = Start-Process `
             -FilePath $exe `
@@ -106,26 +81,18 @@ jobs:
           $started = $false
 
           try {
-
               Write-Host "Process ID: $($process.Id)"
               Write-Host "Waiting for Spring Boot to start..."
 
-              # ----------------------------------------------------
-              # Wait for application
-              # ----------------------------------------------------
               for ($i = 0; $i -lt 60; $i++) {
-
                   Start-Sleep -Seconds 1
 
                   if ($process.HasExited) {
-                      Write-Host ""
-                      Write-Host "Application exited unexpectedly."
-                      Write-Host "Exit code: $($process.ExitCode)"
+                      Write-Error "Application exited unexpectedly. Exit code: $($process.ExitCode)"
                       break
                   }
 
                   try {
-
                       $response = Invoke-WebRequest `
                         -Uri "http://localhost:8080/api/applications" `
                         -UseBasicParsing `
@@ -135,45 +102,20 @@ jobs:
                           $started = $true
                           break
                       }
-
                   }
                   catch {
-                      # Application is still starting.
                   }
               }
-
-              # ----------------------------------------------------
-              # Print Spring Boot logs
-              # ----------------------------------------------------
-              Write-Host ""
-              Write-Host "============================================================"
-              Write-Host "SPRING BOOT STARTUP OUTPUT"
-              Write-Host "============================================================"
-              Write-Host ""
 
               if (Test-Path "native-output.log") {
                   Get-Content "native-output.log"
               }
 
-              Write-Host ""
-              Write-Host "============================================================"
-              Write-Host "APPLICATION STDERR"
-              Write-Host "============================================================"
-              Write-Host ""
-
               if (Test-Path "native-error.log") {
                   Get-Content "native-error.log"
               }
 
-              Write-Host ""
-              Write-Host "============================================================"
-
-              # ----------------------------------------------------
-              # Check startup result
-              # ----------------------------------------------------
               if (-not $started) {
-
-                  Write-Host ""
                   Write-Error "Native application failed to start or API did not respond."
 
                   if ($process.HasExited) {
@@ -183,50 +125,73 @@ jobs:
                   exit 1
               }
 
-              Write-Host ""
               Write-Host "Native application started successfully."
               Write-Host "API responded successfully."
-              Write-Host ""
 
-              # ----------------------------------------------------
-              # Verify database was created
-              # ----------------------------------------------------
               $database = "target\data\job_tracker.db"
 
               if (Test-Path $database) {
-
                   $size = (Get-Item $database).Length
-
                   Write-Host "SQLite database created successfully."
                   Write-Host "Database: $database"
                   Write-Host "Size: $size bytes"
-
               }
               else {
-
                   Write-Error "SQLite database was not created."
                   exit 1
               }
 
-              Write-Host ""
               Write-Host "Native application test PASSED."
-
           }
           finally {
-
-              # ----------------------------------------------------
-              # Stop application
-              # ----------------------------------------------------
               if (-not $process.HasExited) {
-
-                  Write-Host ""
-                  Write-Host "Stopping native application..."
-
                   Stop-Process `
                     -Id $process.Id `
                     -Force `
                     -ErrorAction SilentlyContinue
-
-                  Write-Host "Native application stopped."
               }
           }
+
+      - name: Prepare native release files
+        shell: pwsh
+        run: |
+          $releaseDir = "target\native-release"
+          $dataDir = "$releaseDir\data"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $releaseDir
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $dataDir
+
+          Get-ChildItem `
+            -Path "target" `
+            -File `
+            -Include "*.exe","*.dll" `
+            -Recurse |
+            Where-Object {
+              $_.FullName -notlike "*\native-release\*"
+            } |
+            ForEach-Object {
+              Copy-Item `
+                -Path $_.FullName `
+                -Destination $releaseDir `
+                -Force
+            }
+
+          Write-Host "Native release files:"
+          Get-ChildItem `
+            -Path $releaseDir `
+            -Recurse
+
+      - name: Upload native Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows
+          path: target/native-release/
+          if-no-files-found: error
+          retention-days: 3
