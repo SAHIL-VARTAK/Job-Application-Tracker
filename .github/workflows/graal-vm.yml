@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  NATIVE_JDK_VERSION: "21"
+
 jobs:
   native-build:
     name: Build and Test Native Windows Application
@@ -19,10 +22,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM JDK 25
+      - name: Set up GraalVM JDK 21
         uses: graalvm/setup-graalvm@v1
         with:
-          version: "25.0"
+          java-version: "21"
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -33,6 +36,10 @@ jobs:
           java -version
 
           Write-Host ""
+          Write-Host "===== JAVA HOME ====="
+          Write-Host $env:JAVA_HOME
+
+          Write-Host ""
           Write-Host "===== NATIVE IMAGE ====="
           native-image --version
 
@@ -41,15 +48,21 @@ jobs:
         run: |
           echo Setting up Visual Studio C++ environment...
 
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%Microsoft Visual StudioInstaller\u000Bswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VCAuxiliaryBuild\u000Bcvars64.bat`) do call "%%i"
 
           echo.
           echo ===== MSVC =====
           cl
 
           echo.
+          echo ===== MAVEN JAVA VERSION =====
+          call mvnw.cmd help:evaluate -Dexpression=java.version -q -DforceStdout -Djava.version=%NATIVE_JDK_VERSION%
+
+          echo.
           echo ===== MAVEN NATIVE BUILD =====
-          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
+          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true -Djava.version=%NATIVE_JDK_VERSION%
+
+          if errorlevel 1 exit /b %errorlevel%
 
       - name: Create database directory
         shell: pwsh
@@ -57,25 +70,64 @@ jobs:
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path "target\data" | Out-Null
+            -Path "targetdata" | Out-Null
 
-          Write-Host "Created target\data"
+          Write-Host "Created targetdata"
 
-      - name: Run native application
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          version: latest
+          install-only: true
+
+      - name: Verify UPX
         shell: pwsh
         run: |
-          $exe = ".\target\job-application-tracker.exe"
+          upx --version
+
+      - name: Compress native executable
+        shell: pwsh
+        run: |
+          $exe = ".\targetjob-application-tracker.exe"
 
           if (-not (Test-Path $exe)) {
               Write-Error "Native executable was not found: $exe"
               exit 1
           }
 
-          Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "Starting Job Application Tracker Native Application"
-          Write-Host "============================================================"
-          Write-Host ""
+          $originalSize = (Get-Item $exe).Length
+
+          Write-Host "Original executable size:"
+          Write-Host "$([math]::Round($originalSize / 1MB, 2)) MB"
+
+          upx --best --lzma $exe
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "UPX compression failed."
+              exit 1
+          }
+
+          upx -t $exe
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "UPX validation failed."
+              exit 1
+          }
+
+          $compressedSize = (Get-Item $exe).Length
+
+          Write-Host "Compressed executable size:"
+          Write-Host "$([math]::Round($compressedSize / 1MB, 2)) MB"
+
+      - name: Run compressed native application
+        shell: pwsh
+        run: |
+          $exe = ".\targetjob-application-tracker.exe"
+
+          if (-not (Test-Path $exe)) {
+              Write-Error "Native executable was not found: $exe"
+              exit 1
+          }
 
           $process = Start-Process `
             -FilePath $exe `
@@ -117,31 +169,21 @@ jobs:
               }
 
               Write-Host ""
-              Write-Host "============================================================"
-              Write-Host "SPRING BOOT STARTUP OUTPUT"
-              Write-Host "============================================================"
-              Write-Host ""
+              Write-Host "===== SPRING BOOT STARTUP OUTPUT ====="
 
               if (Test-Path "native-output.log") {
                   Get-Content "native-output.log"
               }
 
               Write-Host ""
-              Write-Host "============================================================"
-              Write-Host "APPLICATION STDERR"
-              Write-Host "============================================================"
-              Write-Host ""
+              Write-Host "===== APPLICATION STDERR ====="
 
               if (Test-Path "native-error.log") {
                   Get-Content "native-error.log"
               }
 
-              Write-Host ""
-              Write-Host "============================================================"
-
               if (-not $started) {
-                  Write-Host ""
-                  Write-Error "Native application failed to start or API did not respond."
+                  Write-Error "Compressed native application failed to start or API did not respond."
 
                   if ($process.HasExited) {
                       Write-Host "Process exit code: $($process.ExitCode)"
@@ -151,15 +193,15 @@ jobs:
               }
 
               Write-Host ""
-              Write-Host "Native application started successfully."
+              Write-Host "Compressed native application started successfully."
               Write-Host "API responded successfully."
-              Write-Host ""
 
-              $database = "target\data\job_tracker.db"
+              $database = "targetdatajob_tracker.db"
 
               if (Test-Path $database) {
                   $size = (Get-Item $database).Length
 
+                  Write-Host ""
                   Write-Host "SQLite database created successfully."
                   Write-Host "Database: $database"
                   Write-Host "Size: $size bytes"
@@ -170,7 +212,7 @@ jobs:
               }
 
               Write-Host ""
-              Write-Host "Native application test PASSED."
+              Write-Host "Compressed native application test PASSED."
           }
           finally {
               if (-not $process.HasExited) {
@@ -189,8 +231,8 @@ jobs:
       - name: Prepare distribution
         shell: pwsh
         run: |
-          $distribution = "target\distribution"
-          $appDirectory = "$distribution\job-application-tracker"
+          $distribution = "targetdistribution"
+          $appDirectory = "$distributionjob-application-tracker"
 
           if (Test-Path $distribution) {
               Remove-Item `
@@ -207,15 +249,15 @@ jobs:
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path "$appDirectory\data" | Out-Null
+            -Path "$appDirectorydata" | Out-Null
 
           Write-Host "Distribution directory prepared."
 
-      - name: Copy native executable
+      - name: Copy compressed native executable
         shell: pwsh
         run: |
-          $source = "target\job-application-tracker.exe"
-          $destination = "target\distribution\job-application-tracker\job-application-tracker.exe"
+          $source = "targetjob-application-tracker.exe"
+          $destination = "targetdistributionjob-application-trackerjob-application-tracker.exe"
 
           if (-not (Test-Path $source)) {
               Write-Error "Native executable not found: $source"
@@ -227,13 +269,13 @@ jobs:
             -Destination $destination `
             -Force
 
-          Write-Host "Copied native executable."
+          Write-Host "Copied compressed native executable."
 
       - name: Copy native DLLs
         shell: pwsh
         run: |
           $source = "target"
-          $destination = "target\distribution\job-application-tracker"
+          $destination = "targetdistributionjob-application-tracker"
 
           $dlls = @(
               "awt.dll",
@@ -266,13 +308,10 @@ jobs:
       - name: Show distribution contents
         shell: pwsh
         run: |
-          $distribution = "target\distribution\job-application-tracker"
+          $distribution = "targetdistributionjob-application-tracker"
 
           Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "FINAL DISTRIBUTION"
-          Write-Host "============================================================"
-          Write-Host ""
+          Write-Host "===== FINAL DISTRIBUTION ====="
 
           Get-ChildItem `
             -Path $distribution `
@@ -296,8 +335,8 @@ jobs:
       - name: Create distribution ZIP
         shell: pwsh
         run: |
-          $source = "target\distribution\job-application-tracker"
-          $zip = "target\job-application-tracker-windows-native.zip"
+          $source = "targetdistributionjob-application-tracker"
+          $zip = "targetjob-application-tracker-windows-native.zip"
 
           if (Test-Path $zip) {
               Remove-Item `
@@ -318,20 +357,14 @@ jobs:
           $zipSize = (Get-Item $zip).Length
 
           Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "PACKAGE CREATED"
-          Write-Host "============================================================"
-          Write-Host ""
-          Write-Host "Package:"
-          Write-Host $zip
-          Write-Host ""
-          Write-Host "Size:"
-          Write-Host "$([math]::Round($zipSize / 1MB, 2)) MB"
+          Write-Host "===== PACKAGE CREATED ====="
+          Write-Host "Package: $zip"
+          Write-Host "Size: $([math]::Round($zipSize / 1MB, 2)) MB"
 
       - name: Upload native Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: job-application-tracker-windows-native-graalvm-25
+          name: job-application-tracker-windows-native-graalvm-21-upx
           path: target/job-application-tracker-windows-native.zip
           if-no-files-found: error
           retention-days: 3
