@@ -172,8 +172,6 @@
             <id>native</id>
 
             <dependencies>
-
-                <!-- Replace Tomcat with Jetty for native build -->
                 <dependency>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-web</artifactId>
@@ -189,69 +187,7 @@
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-jetty</artifactId>
                 </dependency>
-
             </dependencies>
-
-            <build>
-                <plugins>
-
-                    <!--
-                        GraalVM CE 21.3.3.1
-                        Native Image
-                        JDK 17
-
-                        native-maven-plugin 0.9.28 is used instead
-                        of 0.10.6 because 0.10.6 requires GraalVM 22+.
-                    -->
-                    <plugin>
-                        <groupId>org.graalvm.buildtools</groupId>
-                        <artifactId>native-maven-plugin</artifactId>
-                        <version>0.9.28</version>
-
-                        <configuration>
-                            <imageName>job-application-tracker</imageName>
-
-                            <buildArgs>
-
-                                <!-- Native Image configuration -->
-                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-
-                                <!-- Conservative optimization -->
-                                <buildArg>-O1</buildArg>
-
-                                <!-- Only English locale -->
-                                <buildArg>-H:IncludeLocales=en</buildArg>
-
-                                <!-- Reduce charset footprint -->
-                                <buildArg>-H:-AddAllCharsets</buildArg>
-
-                                <!-- Portable CPU target -->
-                                <buildArg>-march=compatibility</buildArg>
-
-                                <!-- Generate build report -->
-                                <buildArg>-H:+BuildReport</buildArg>
-
-                                <!-- Do not generate fallback JAR -->
-                                <buildArg>--no-fallback</buildArg>
-
-                            </buildArgs>
-                        </configuration>
-
-                        <executions>
-                            <execution>
-                                <id>build-native</id>
-                                <phase>package</phase>
-                                <goals>
-                                    <goal>compile-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-
-                    </plugin>
-
-                </plugins>
-            </build>
-
         </profile>
 
     </profiles>

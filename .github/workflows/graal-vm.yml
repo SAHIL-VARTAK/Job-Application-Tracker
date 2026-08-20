@@ -10,108 +10,31 @@ on:
 permissions:
   contents: read
 
-env:
-  NATIVE_JDK_VERSION: "17"
-  GRAALVM_VERSION: "21.3.3.1"
-  APP_NAME: "job-application-tracker"
-
 jobs:
   native-build:
-    name: Build and Test Native Windows Application
+    name: Build and Run Native Windows Application
     runs-on: windows-latest
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM 21.3.3.1
-        shell: pwsh
-        run: |
-          $graalVmUrl = "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-21.3.3.1/graalvm-ce-java17-windows-amd64-21.3.3.1.zip"
-          $zip = Join-Path $env:RUNNER_TEMP "graalvm.zip"
-          $installDir = Join-Path $env:RUNNER_TEMP "graalvm"
+      # ------------------------------------------------------------
+      # GraalVM JDK 22
+      # ------------------------------------------------------------
+      - name: Set up GraalVM JDK 22
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "22"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-          Write-Host "===== DOWNLOADING GRAALVM ====="
-          Write-Host "Version: $env:GRAALVM_VERSION"
-          Write-Host "URL: $graalVmUrl"
-
-          Invoke-WebRequest `
-            -Uri $graalVmUrl `
-            -OutFile $zip
-
-          if (-not (Test-Path -LiteralPath $zip)) {
-              Write-Error "GraalVM ZIP was not downloaded."
-              exit 1
-          }
-
-          Write-Host ""
-          Write-Host "===== EXTRACTING GRAALVM ====="
-
-          Expand-Archive `
-            -Path $zip `
-            -DestinationPath $installDir `
-            -Force
-
-          $graalHome = Get-ChildItem `
-            -Path $installDir `
-            -Directory |
-            Select-Object -First 1
-
-          if ($null -eq $graalHome) {
-              Write-Error "GraalVM installation directory was not found."
-              exit 1
-          }
-
-          "JAVA_HOME=$($graalHome.FullName)" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
-
-          "$($graalHome.FullName)\bin" | Out-File `
-            -FilePath $env:GITHUB_PATH `
-            -Encoding utf8 `
-            -Append
-
-          Write-Host ""
-          Write-Host "GraalVM installed at:"
-          Write-Host $graalHome.FullName
-
-      - name: Install Native Image
-        shell: pwsh
-        run: |
-          Write-Host "===== INSTALLING NATIVE IMAGE ====="
-
-          $gu = Join-Path $env:JAVA_HOME "bin\gu.cmd"
-
-          if (-not (Test-Path -LiteralPath $gu)) {
-              Write-Error "GraalVM gu.cmd was not found: $gu"
-              exit 1
-          }
-
-          & $gu install native-image
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Failed to install Native Image."
-              exit 1
-          }
-
-          "$env:JAVA_HOME\bin" | Out-File `
-            -FilePath $env:GITHUB_PATH `
-            -Encoding utf8 `
-            -Append
-
-          Write-Host ""
-          Write-Host "===== NATIVE IMAGE INSTALLED ====="
-
-          $nativeImage = Join-Path $env:JAVA_HOME "bin\native-image.cmd"
-
-          if (-not (Test-Path -LiteralPath $nativeImage)) {
-              Write-Error "native-image.cmd was not found after installation."
-              exit 1
-          }
-
-          & $nativeImage --version
-
+      # ------------------------------------------------------------
+      # Verify Java / GraalVM
+      # ------------------------------------------------------------
       - name: Verify GraalVM
         shell: pwsh
         run: |
@@ -119,231 +42,90 @@ jobs:
           java -version
 
           Write-Host ""
-          Write-Host "===== JAVA HOME ====="
-          Write-Host $env:JAVA_HOME
-
-          Write-Host ""
-          Write-Host "===== GRAALVM ====="
-          & "$env:JAVA_HOME\bin\java.exe" -version
-
-          Write-Host ""
           Write-Host "===== NATIVE IMAGE ====="
           native-image --version
 
-          Write-Host ""
-          Write-Host "===== NATIVE IMAGE LOCATION ====="
-          Get-Command native-image
-
+      # ------------------------------------------------------------
+      # Build native executable
+      # ------------------------------------------------------------
       - name: Build native executable
         shell: cmd
         run: |
           echo Setting up Visual Studio C++ environment...
 
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VCAuxiliaryBuild\vcvars64.bat`) do call "%%i"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
 
           echo.
           echo ===== MSVC =====
           cl
 
           echo.
-          echo ===== JAVA VERSION =====
-          java -version
-
-          echo.
-          echo ===== JAVA HOME =====
-          echo %JAVA_HOME%
-
-          echo.
-          echo ===== MAVEN JAVA VERSION =====
-          call mvnw.cmd help:evaluate -Dexpression=java.version -q -DforceStdout -Djava.version=%NATIVE_JDK_VERSION%
-
-          echo.
           echo ===== MAVEN NATIVE BUILD =====
-          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true -Djava.version=%NATIVE_JDK_VERSION%
+          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
 
-          if errorlevel 1 exit /b %errorlevel%
-
-      - name: Locate generated executable
-        shell: pwsh
-        run: |
-          $target = Join-Path $PWD "target"
-
-          Write-Host "Target directory: $target"
-
-          if (-not (Test-Path -LiteralPath $target)) {
-              Write-Error "Target directory was not found: $target"
-              exit 1
-          }
-
-          $executables = @(
-              Get-ChildItem `
-                -Path $target `
-                -Filter "*.exe" `
-                -File `
-                -ErrorAction SilentlyContinue
-          )
-
-          if ($executables.Count -eq 0) {
-              Write-Host "Files generated in target:"
-              Get-ChildItem `
-                -Path $target `
-                -Recurse `
-                -File |
-                Select-Object FullName, Length |
-                Format-Table -AutoSize
-
-              Write-Error "No executable was generated in $target"
-              exit 1
-          }
-
-          $preferred = $executables |
-            Where-Object { $_.BaseName -eq $env:APP_NAME } |
-            Select-Object -First 1
-
-          if ($null -eq $preferred) {
-              $preferred = $executables |
-                Sort-Object Length -Descending |
-                Select-Object -First 1
-          }
-
-          $preferredFullPath = $preferred.FullName
-
-          "NATIVE_EXE=$preferredFullPath" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
-
-          Write-Host "Selected executable:"
-          Write-Host $preferredFullPath
-
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          install-only: true
-
-      - name: Verify UPX
-        shell: pwsh
-        run: |
-          upx --version
-
-      - name: Rename native executable
-        shell: pwsh
-        run: |
-          $source = $env:NATIVE_EXE
-          $target = Join-Path $PWD "target\$env:APP_NAME.exe"
-
-          if (-not (Test-Path -LiteralPath $source)) {
-              Write-Error "Native executable was not found: $source"
-              exit 1
-          }
-
-          if ($source -ne $target) {
-              Copy-Item `
-                -LiteralPath $source `
-                -Destination $target `
-                -Force
-          }
-
-          "NATIVE_EXE=$target" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
-
-          Write-Host "Executable used by later steps:"
-          Write-Host $target
-
+      # ------------------------------------------------------------
+      # Create database directory
+      # ------------------------------------------------------------
       - name: Create database directory
         shell: pwsh
         run: |
           New-Item `
             -ItemType Directory `
             -Force `
-            -Path (Join-Path $PWD "target\data") | Out-Null
+            -Path "target\data"
 
           Write-Host "Created target\data"
 
-      - name: Compress native executable
+      # ------------------------------------------------------------
+      # Run native application and test API
+      # ------------------------------------------------------------
+      - name: Run native application
         shell: pwsh
         run: |
-          $exe = $env:NATIVE_EXE
+          $exe = ".\target\job-application-tracker.exe"
 
-          if (-not (Test-Path -LiteralPath $exe)) {
+          if (-not (Test-Path $exe)) {
               Write-Error "Native executable was not found: $exe"
               exit 1
           }
 
-          $originalSize = (Get-Item -LiteralPath $exe).Length
-
-          Write-Host "Original executable:"
-          Write-Host $exe
-          Write-Host "Original size: $([math]::Round($originalSize / 1MB, 2)) MB"
-
-          upx --best --lzma $exe
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "UPX compression failed."
-              exit 1
-          }
-
-          upx -t $exe
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "UPX validation failed."
-              exit 1
-          }
-
-          $compressedSize = (Get-Item -LiteralPath $exe).Length
-
-          Write-Host "Compressed size: $([math]::Round($compressedSize / 1MB, 2)) MB"
-
-      - name: Run compressed native application
-        shell: pwsh
-        run: |
-          $exe = $env:NATIVE_EXE
-          $dataDirectory = Join-Path $PWD "target\data"
-          $outputLog = Join-Path $PWD "native-output.log"
-          $errorLog = Join-Path $PWD "native-error.log"
-
-          if (-not (Test-Path -LiteralPath $exe)) {
-              Write-Error "Native executable was not found: $exe"
-              exit 1
-          }
-
-          if (Test-Path -LiteralPath $outputLog) {
-              Remove-Item -LiteralPath $outputLog -Force
-          }
-
-          if (Test-Path -LiteralPath $errorLog) {
-              Remove-Item -LiteralPath $errorLog -Force
-          }
-
-          $databasePath = Join-Path $dataDirectory "job_tracker.db"
-          $databaseUrl = "jdbc:sqlite:$databasePath"
+          Write-Host ""
+          Write-Host "============================================================"
+          Write-Host "Starting Job Application Tracker Native Application"
+          Write-Host "============================================================"
+          Write-Host ""
 
           $process = Start-Process `
             -FilePath $exe `
-            -ArgumentList "--spring.datasource.url=$databaseUrl" `
-            -RedirectStandardOutput $outputLog `
-            -RedirectStandardError $errorLog `
-            -WorkingDirectory $PWD `
+            -ArgumentList `
+              '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
+            -RedirectStandardOutput "native-output.log" `
+            -RedirectStandardError "native-error.log" `
             -PassThru
 
           $started = $false
 
           try {
+
               Write-Host "Process ID: $($process.Id)"
               Write-Host "Waiting for Spring Boot to start..."
 
+              # ----------------------------------------------------
+              # Wait for application
+              # ----------------------------------------------------
               for ($i = 0; $i -lt 60; $i++) {
+
                   Start-Sleep -Seconds 1
 
                   if ($process.HasExited) {
+                      Write-Host ""
                       Write-Host "Application exited unexpectedly."
                       Write-Host "Exit code: $($process.ExitCode)"
                       break
                   }
 
                   try {
+
                       $response = Invoke-WebRequest `
                         -Uri "http://localhost:8080/api/applications" `
                         -UseBasicParsing `
@@ -353,27 +135,46 @@ jobs:
                           $started = $true
                           break
                       }
+
                   }
                   catch {
+                      # Application is still starting.
                   }
               }
 
+              # ----------------------------------------------------
+              # Print Spring Boot logs
+              # ----------------------------------------------------
               Write-Host ""
-              Write-Host "===== SPRING BOOT STARTUP OUTPUT ====="
+              Write-Host "============================================================"
+              Write-Host "SPRING BOOT STARTUP OUTPUT"
+              Write-Host "============================================================"
+              Write-Host ""
 
-              if (Test-Path -LiteralPath $outputLog) {
-                  Get-Content -LiteralPath $outputLog
+              if (Test-Path "native-output.log") {
+                  Get-Content "native-output.log"
               }
 
               Write-Host ""
-              Write-Host "===== APPLICATION STDERR ====="
+              Write-Host "============================================================"
+              Write-Host "APPLICATION STDERR"
+              Write-Host "============================================================"
+              Write-Host ""
 
-              if (Test-Path -LiteralPath $errorLog) {
-                  Get-Content -LiteralPath $errorLog
+              if (Test-Path "native-error.log") {
+                  Get-Content "native-error.log"
               }
 
+              Write-Host ""
+              Write-Host "============================================================"
+
+              # ----------------------------------------------------
+              # Check startup result
+              # ----------------------------------------------------
               if (-not $started) {
-                  Write-Error "Compressed native application failed to start or API did not respond."
+
+                  Write-Host ""
+                  Write-Error "Native application failed to start or API did not respond."
 
                   if ($process.HasExited) {
                       Write-Host "Process exit code: $($process.ExitCode)"
@@ -383,180 +184,49 @@ jobs:
               }
 
               Write-Host ""
-              Write-Host "Compressed native application started successfully."
+              Write-Host "Native application started successfully."
               Write-Host "API responded successfully."
+              Write-Host ""
 
-              $database = Join-Path $dataDirectory "job_tracker.db"
+              # ----------------------------------------------------
+              # Verify database was created
+              # ----------------------------------------------------
+              $database = "target\data\job_tracker.db"
 
-              if (Test-Path -LiteralPath $database) {
-                  $size = (Get-Item -LiteralPath $database).Length
+              if (Test-Path $database) {
+
+                  $size = (Get-Item $database).Length
 
                   Write-Host "SQLite database created successfully."
                   Write-Host "Database: $database"
                   Write-Host "Size: $size bytes"
+
               }
               else {
+
                   Write-Error "SQLite database was not created."
                   exit 1
               }
 
-              Write-Host "Compressed native application test PASSED."
+              Write-Host ""
+              Write-Host "Native application test PASSED."
+
           }
           finally {
+
+              # ----------------------------------------------------
+              # Stop application
+              # ----------------------------------------------------
               if (-not $process.HasExited) {
+
+                  Write-Host ""
                   Write-Host "Stopping native application..."
 
                   Stop-Process `
                     -Id $process.Id `
                     -Force `
                     -ErrorAction SilentlyContinue
+
+                  Write-Host "Native application stopped."
               }
           }
-
-      - name: Prepare distribution
-        shell: pwsh
-        run: |
-          $distribution = Join-Path $PWD "target\distribution"
-          $appDirectory = Join-Path $distribution $env:APP_NAME
-          $dataDirectory = Join-Path $appDirectory "data"
-
-          if (Test-Path -LiteralPath $distribution) {
-              Remove-Item `
-                -LiteralPath $distribution `
-                -Recurse `
-                -Force
-          }
-
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path $dataDirectory | Out-Null
-
-          Write-Host "Distribution directory prepared:"
-          Write-Host $appDirectory
-
-      - name: Copy compressed native executable
-        shell: pwsh
-        run: |
-          $source = $env:NATIVE_EXE
-          $destination = Join-Path `
-            $PWD `
-            "target\distribution\$env:APP_NAME\$env:APP_NAME.exe"
-
-          if (-not (Test-Path -LiteralPath $source)) {
-              Write-Error "Native executable was not found: $source"
-              exit 1
-          }
-
-          Copy-Item `
-            -LiteralPath $source `
-            -Destination $destination `
-            -Force
-
-          Write-Host "Copied compressed executable:"
-          Write-Host $destination
-
-      - name: Copy native DLLs
-        shell: pwsh
-        run: |
-          $source = Join-Path $PWD "target"
-          $destination = Join-Path `
-            $PWD `
-            "target\distribution\$env:APP_NAME"
-
-          $dlls = @(
-              "awt.dll",
-              "fontmanager.dll",
-              "freetype.dll",
-              "java.dll",
-              "javaaccessbridge.dll",
-              "javajpeg.dll",
-              "jawt.dll",
-              "jvm.dll",
-              "lcms.dll"
-          )
-
-          foreach ($dll in $dlls) {
-              $sourceFile = Join-Path $source $dll
-
-              if (Test-Path -LiteralPath $sourceFile) {
-                  Copy-Item `
-                    -LiteralPath $sourceFile `
-                    -Destination $destination `
-                    -Force
-
-                  Write-Host "Copied $dll"
-              }
-              else {
-                  Write-Host "WARNING: $dll was not generated."
-              }
-          }
-
-      - name: Show distribution contents
-        shell: pwsh
-        run: |
-          $distribution = Join-Path `
-            $PWD `
-            "target\distribution\$env:APP_NAME"
-
-          Write-Host "===== FINAL DISTRIBUTION ====="
-
-          Get-ChildItem `
-            -Path $distribution `
-            -Recurse `
-            -File |
-            Select-Object FullName, Length |
-            Format-Table -AutoSize
-
-          $totalSize = (
-              Get-ChildItem `
-                -Path $distribution `
-                -Recurse `
-                -File |
-                Measure-Object -Property Length -Sum
-          ).Sum
-
-          Write-Host ""
-          Write-Host "Total distribution size:"
-          Write-Host "$([math]::Round($totalSize / 1MB, 2)) MB"
-
-      - name: Create distribution ZIP
-        shell: pwsh
-        run: |
-          $source = Join-Path `
-            $PWD `
-            "target\distribution\$env:APP_NAME"
-
-          $zip = Join-Path `
-            $PWD `
-            "target\$env:APP_NAME-windows-native.zip"
-
-          if (Test-Path -LiteralPath $zip) {
-              Remove-Item `
-                -LiteralPath $zip `
-                -Force
-          }
-
-          Compress-Archive `
-            -Path $source `
-            -DestinationPath $zip `
-            -CompressionLevel Optimal
-
-          if (-not (Test-Path -LiteralPath $zip)) {
-              Write-Error "ZIP package was not created."
-              exit 1
-          }
-
-          $zipSize = (Get-Item -LiteralPath $zip).Length
-
-          Write-Host "===== PACKAGE CREATED ====="
-          Write-Host "Package: $zip"
-          Write-Host "Size: $([math]::Round($zipSize / 1MB, 2)) MB"
-
-      - name: Upload native Windows package
-        uses: actions/upload-artifact@v4
-        with:
-          name: job-application-tracker-windows-native-graalvm-21.3.3.1-upx
-          path: target/job-application-tracker-windows-native.zip
-          if-no-files-found: error
-          retention-days: 3
