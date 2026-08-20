@@ -188,10 +188,24 @@ jobs:
             -Path $releaseDir `
             -Recurse
 
+      - name: Create native Windows ZIP
+        shell: pwsh
+        run: |
+          Push-Location "target\native-release"
+
+          & 7z a `
+            "..\native-windows.zip" `
+            ".\*"
+
+          Pop-Location
+
+          Write-Host "Created native-windows.zip"
+          & 7z l "target\native-windows.zip"
+
       - name: Upload native Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: native-windows
-          path: target/native-release/
+          path: target/native-windows.zip
           if-no-files-found: error
           retention-days: 3
