@@ -5,5 +5,4 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 
 @Configuration
 @ImportRuntimeHints(NativeRuntimeHints.class)
-public class NativeHintsConfig {
-}
+public class NativeHintsConfig {}
