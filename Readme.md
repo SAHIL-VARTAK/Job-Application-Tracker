@@ -142,3 +142,75 @@ Run the container:
 ```bash
 docker run -p 8080:8080 job-tracker
 ```
+
+## GraalVM Native Image
+
+The project also supports building a native executable using [GraalVM Native Image](https://www.graalvm.org/latest/reference-manual/native-image/).
+
+The `native` Maven profile replaces Tomcat with Jetty and configures the GraalVM Native Maven Plugin with native-image optimizations.
+
+## GraalVM Native Image Requirements
+
+To build the native Windows executable, the following are required:
+
+* Windows
+* GraalVM JDK 22
+* GraalVM Native Image
+* Visual Studio Build Tools with C++ build tools
+* Maven Wrapper (`mvnw.cmd`)
+
+The native build uses the Maven `native` profile and GraalVM Native Image to compile the Spring Boot application into a standalone Windows executable.
+
+### Build Native Executable
+
+Make sure GraalVM is installed and configured as the active JDK.
+
+```bash
+mvn -Pnative native:compile
+```
+
+Or build it through the Maven package lifecycle:
+
+```bash
+mvn -Pnative package
+```
+
+The generated native executable will be available in:
+
+```text
+target/job-application-tracker.exe
+```
+
+on Windows, or:
+
+```text
+target/job-application-tracker
+```
+
+on Linux/macOS.
+
+### Run Native Executable
+
+Windows:
+
+```bash
+target\job-application-tracker.exe
+```
+
+Linux/macOS:
+
+```bash
+./target/job-application-tracker
+```
+
+The native build uses:
+
+* GraalVM Native Image
+* Spring Boot Native support
+* Jetty for the native profile
+* Serial GC
+* Compatibility CPU architecture
+* English locale only
+* Reduced charset set
+* `--no-fallback`
+* Native Image build report
