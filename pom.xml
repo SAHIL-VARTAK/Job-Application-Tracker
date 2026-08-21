@@ -157,4 +157,63 @@
         </plugins>
     </build>
 
+    <profiles>
+        <profile>
+            <id>native</id>
+
+            <dependencies>
+                <!-- Replace Tomcat with Jetty only for native builds -->
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-web</artifactId>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-starter-tomcat</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-jetty</artifactId>
+                </dependency>
+            </dependencies>
+
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+
+                        <configuration>
+                            <imageName>job-application-tracker</imageName>
+
+                            <buildArgs>
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>-O1</buildArg>
+                                <buildArg>-H:IncludeLocales=en</buildArg>
+                                <buildArg>-H:-AddAllCharsets</buildArg>
+                                <buildArg>--gc=serial</buildArg>
+                                <buildArg>-march=compatibility</buildArg>
+                                <buildArg>-H:+BuildReport</buildArg>
+                                <buildArg>--no-fallback</buildArg>
+                            </buildArgs>
+                        </configuration>
+
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

@@ -1,0 +1,211 @@
+name: Native Windows Build
+
+on:
+  push:
+    branches:
+      - feature/graal-vm-optimization
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    name: Build and Run Native Windows Application
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM JDK 22
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "22"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify GraalVM
+        shell: pwsh
+        run: |
+          java -version
+          native-image --version
+
+      - name: Build native executable
+        shell: cmd
+        run: |
+          echo Setting up Visual Studio C++ environment...
+
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvars64.bat`) do call "%%i"
+
+          echo.
+          echo ===== MSVC =====
+          cl
+
+          echo.
+          echo ===== MAVEN NATIVE BUILD =====
+          call mvnw.cmd -Pnative clean package -Dmaven.test.skip=true
+
+      - name: Create database directory
+        shell: pwsh
+        run: |
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "target\data"
+
+      - name: Run native application
+        shell: pwsh
+        run: |
+          $exe = ".\target\job-application-tracker.exe"
+
+          if (-not (Test-Path $exe)) {
+              Write-Error "Native executable was not found: $exe"
+              exit 1
+          }
+
+          $process = Start-Process `
+            -FilePath $exe `
+            -ArgumentList `
+              '--spring.datasource.url=jdbc:sqlite:target/data/job_tracker.db' `
+            -RedirectStandardOutput "native-output.log" `
+            -RedirectStandardError "native-error.log" `
+            -PassThru
+
+          $started = $false
+
+          try {
+              Write-Host "Process ID: $($process.Id)"
+              Write-Host "Waiting for Spring Boot to start..."
+
+              for ($i = 0; $i -lt 60; $i++) {
+                  Start-Sleep -Seconds 1
+
+                  if ($process.HasExited) {
+                      Write-Error "Application exited unexpectedly. Exit code: $($process.ExitCode)"
+                      break
+                  }
+
+                  try {
+                      $response = Invoke-WebRequest `
+                        -Uri "http://localhost:8080/api/applications" `
+                        -UseBasicParsing `
+                        -TimeoutSec 2
+
+                      if ($response.StatusCode -lt 500) {
+                          $started = $true
+                          break
+                      }
+                  }
+                  catch {
+                  }
+              }
+
+              if (Test-Path "native-output.log") {
+                  Get-Content "native-output.log"
+              }
+
+              if (Test-Path "native-error.log") {
+                  Get-Content "native-error.log"
+              }
+
+              if (-not $started) {
+                  Write-Error "Native application failed to start or API did not respond."
+
+                  if ($process.HasExited) {
+                      Write-Host "Process exit code: $($process.ExitCode)"
+                  }
+
+                  exit 1
+              }
+
+              Write-Host "Native application started successfully."
+              Write-Host "API responded successfully."
+
+              $database = "target\data\job_tracker.db"
+
+              if (Test-Path $database) {
+                  $size = (Get-Item $database).Length
+                  Write-Host "SQLite database created successfully."
+                  Write-Host "Database: $database"
+                  Write-Host "Size: $size bytes"
+              }
+              else {
+                  Write-Error "SQLite database was not created."
+                  exit 1
+              }
+
+              Write-Host "Native application test PASSED."
+          }
+          finally {
+              if (-not $process.HasExited) {
+                  Stop-Process `
+                    -Id $process.Id `
+                    -Force `
+                    -ErrorAction SilentlyContinue
+              }
+          }
+
+      - name: Prepare native release files
+        shell: pwsh
+        run: |
+          $releaseDir = "target\native-release"
+          $dataDir = "$releaseDir\data"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $releaseDir
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $dataDir
+
+          Get-ChildItem `
+            -Path "target" `
+            -File `
+            -Include "*.exe","*.dll" `
+            -Recurse |
+            Where-Object {
+              $_.FullName -notlike "*\native-release\*"
+            } |
+            ForEach-Object {
+              Copy-Item `
+                -Path $_.FullName `
+                -Destination $releaseDir `
+                -Force
+            }
+
+          Write-Host "Native release files:"
+          Get-ChildItem `
+            -Path $releaseDir `
+            -Recurse
+
+      - name: Create native Windows ZIP
+        shell: pwsh
+        run: |
+          Push-Location "target\native-release"
+
+          & 7z a `
+            "..\native-windows.zip" `
+            ".\*"
+
+          Pop-Location
+
+          Write-Host "Created native-windows.zip"
+          & 7z l "target\native-windows.zip"
+
+      - name: Upload native Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows
+          path: target/native-windows.zip
+          if-no-files-found: error
+          retention-days: 3
